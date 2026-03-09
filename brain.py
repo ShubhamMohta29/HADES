@@ -1,20 +1,16 @@
-from openai import OpenAI
-from config import OPENAI_API_KEY
+from groq import Groq
+from config import GROQ_API_KEY
 
-import config
-print(config.__file__)
+client = Groq(api_key=GROQ_API_KEY)
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
-def think(prompt):
+def think(user_input):
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="llama3-8b-8192",  # free model
         messages=[
-            {"role": "system", "content": "You are Jarvis, a concise but intelligent AI assistant."},
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": "You are Jarvis, a helpful assistant."},
+            {"role": "user", "content": user_input}
         ]
     )
-
     return response.choices[0].message.content
 
 if __name__ == "__main__":
