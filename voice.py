@@ -40,14 +40,14 @@ def listen():
         return None
 
 def wait_for_wake_word():
-    print("Waiting for 'Hades'...")
+    print("Waiting for wake word...")
     while True:
         with sr.Microphone() as source:
             recognizer.adjust_for_ambient_noise(source, duration=0.3)
             try:
                 audio = recognizer.listen(source, timeout=5, phrase_time_limit=3)
                 text = recognizer.recognize_google(audio).lower()
-                if "hades" in text:
+                if "wakey" in text:
                     print("Wake word detected!")
                     return
             except:
