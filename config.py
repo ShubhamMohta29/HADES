@@ -3,14 +3,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Required ─────────────────────────────────────────────────────────────────
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-# ── Free APIs (get keys at the links below) ───────────────────────────────────
-# https://openweathermap.org/api  (free tier)
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY", "")
-
-# https://newsapi.org  (free tier - 100 requests/day)
 NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 
 # ── Spotify (optional) ────────────────────────────────────────────────────────

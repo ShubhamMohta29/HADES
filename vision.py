@@ -1,22 +1,28 @@
 import pyautogui
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from config import GEMINI_API_KEY
-from PIL import Image
 import io
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 def analyze_screen(prompt="What do you see on this screen? Help me with whatever is on it."):
-    # Take screenshot
-    screenshot = pyautogui.screenshot()
-    
-    # Convert to bytes
-    img_bytes = io.BytesIO()
-    screenshot.save(img_bytes, format="PNG")
-    img_bytes.seek(0)
-    image = Image.open(img_bytes)
+    try:
+        screenshot = pyautogui.screenshot()
+        img_bytes = io.BytesIO()
+        screenshot.save(img_bytes, format="PNG")
+        image_data = img_bytes.getvalue()
 
-    # Send to Gemini
-    response = model.generate_content([prompt, image])
-    return response.text
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                types.Part.from_bytes(data=image_data, mime_type="image/png"),
+                prompt
+            ]
+        )
+        return response.text
+
+    except Exception as e:
+        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            return "I've hit my vision quota limit for today, Sir. I'll be able to see your screen again tomorrow, or you can provide a new API key."
+        return f"Vision system error, Sir: {str(e)[:100]}"

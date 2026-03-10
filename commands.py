@@ -27,7 +27,7 @@ def set_volume(level):
 # ── Apps & websites ─────────────────────────────────────────────────────────
 APPS = {
     "chrome":       r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    "spotify":      os.path.expanduser(r"~\AppData\Roaming\Spotify\Spotify.exe"),
+    "spotify":      os.path.expanduser(r"C:\Users\shubh\AppData\Local\Microsoft\WindowsApps\Spotify.exe"),
     "notepad":      "notepad.exe",
     "calculator":   "calc.exe",
     "vscode":       os.path.expanduser(r"~\AppData\Local\Programs\Microsoft VS Code\Code.exe"),

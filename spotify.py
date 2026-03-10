@@ -12,41 +12,58 @@ try:
     from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI
 
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-        client_id=SPOTIFY_CLIENT_ID,
-        client_secret=SPOTIFY_CLIENT_SECRET,
-        redirect_uri=SPOTIFY_REDIRECT_URI,
-        scope="user-modify-playback-state user-read-playback-state user-read-currently-playing"
+    client_id=SPOTIFY_CLIENT_ID,
+    client_secret=SPOTIFY_CLIENT_SECRET,
+    redirect_uri="http://127.0.0.1:8888/callback",
+    scope="user-modify-playback-state user-read-playback-state user-read-currently-playing",
+    open_browser=True  # auto-opens browser for auth
     ))
     SPOTIFY_AVAILABLE = True
 except Exception:
     SPOTIFY_AVAILABLE = False
 
+def get_active_device():
+    devices = sp.devices()
+    device_list = devices.get("devices", [])
+    if not device_list:
+        return None
+    # Prefer active device, otherwise take first available
+    for d in device_list:
+        if d["is_active"]:
+            return d["id"]
+    return device_list[0]["id"]  # use first available if none active
+
 def spotify_command(text):
     if not SPOTIFY_AVAILABLE:
-        return "Spotify is not configured, Sir. Please add your Spotify API credentials."
+        return "Spotify is not configured, Sir."
 
     t = text.lower()
     try:
         if "play" in t and "spotify" not in t:
-            query = t.replace("play", "").strip()
-            results = sp.search(q=query, limit=1, type="track")
-            tracks = results["tracks"]["items"]
-            if tracks:
-                sp.start_playback(uris=[tracks[0]["uri"]])
-                return f"Playing {tracks[0]['name']} by {tracks[0]['artists'][0]['name']}, Sir."
-            return f"Could not find {query} on Spotify, Sir."
+            query = t.replace("play", "").replace("music", "").replace("a song", "").replace("me", "").strip()
+            device_id = get_active_device()
+            if not device_id:
+                return "No Spotify device found. Please open Spotify and play something manually first, Sir."
+
+            if query:
+                results = sp.search(q=query, limit=1, type="track")
+                tracks = results["tracks"]["items"]
+                if tracks:
+                    sp.start_playback(device_id=device_id, uris=[tracks[0]["uri"]])
+                    return f"Playing {tracks[0]['name']} by {tracks[0]['artists'][0]['name']}, Sir."
+                return f"Could not find {query} on Spotify, Sir."
+            else:
+                # No specific song — just resume or play recommended
+                sp.start_playback(device_id=device_id)
+                return "Resuming playback, Sir."
 
         if "pause" in t or "stop music" in t:
             sp.pause_playback()
             return "Music paused, Sir."
 
-        if "resume" in t or "continue" in t:
-            sp.start_playback()
-            return "Resuming music, Sir."
-
         if "next" in t or "skip" in t:
             sp.next_track()
-            return "Skipping to next track, Sir."
+            return "Skipping, Sir."
 
         if "previous" in t or "last song" in t:
             sp.previous_track()

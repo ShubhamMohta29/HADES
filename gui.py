@@ -17,7 +17,7 @@ class HadesGUI:
         title_font = font.Font(family="Consolas", size=16, weight="bold")
         tk.Label(header, text="◈  H.A.D.E.S", font=title_font,
                  fg="#00d4ff", bg="#0d1117").pack()
-        tk.Label(header, text="Human AssistANCE and Decision Engine System",
+        tk.Label(header, text="Human Assistance and Decision Engine System",
                  font=("Consolas", 8), fg="#4a6fa5", bg="#0d1117").pack()
 
         # ── Status bar ──────────────────────────────────────────────────────
