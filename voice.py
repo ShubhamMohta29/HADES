@@ -2,17 +2,21 @@ import speech_recognition as sr
 import pyttsx3
 
 recognizer = sr.Recognizer()
+recognizer.pause_threshold = 0.8        # seconds of silence before cutting off
+recognizer.phrase_threshold = 0.3
+recognizer.non_speaking_duration = 0.8
+recognizer.dynamic_energy_threshold = True
+recognizer.energy_threshold = 300
 
 def speak(text):
     print("Hades:", text)
     engine = pyttsx3.init()
     voices = engine.getProperty('voices')
-    # Use male voice if available
     for voice in voices:
         if 'male' in voice.name.lower() or 'david' in voice.name.lower() or 'mark' in voice.name.lower():
             engine.setProperty('voice', voice.id)
             break
-    engine.setProperty('rate', 165)    # slightly slower = more authoritative
+    engine.setProperty('rate', 165)
     engine.setProperty('volume', 1.0)
     engine.say(text)
     engine.runAndWait()
@@ -21,9 +25,11 @@ def speak(text):
 def listen():
     with sr.Microphone() as source:
         print("Listening...")
-        recognizer.adjust_for_ambient_noise(source, duration=0.3)
+        recognizer.adjust_for_ambient_noise(source, duration=0.5)
         try:
-            audio = recognizer.listen(source, timeout=5, phrase_time_limit=10)
+            # No phrase_time_limit = unlimited time to speak
+            # pause_threshold controls when it stops after silence
+            audio = recognizer.listen(source, timeout=10)
         except sr.WaitTimeoutError:
             return None
     try:
@@ -47,7 +53,7 @@ def wait_for_wake_word():
             try:
                 audio = recognizer.listen(source, timeout=5, phrase_time_limit=3)
                 text = recognizer.recognize_google(audio).lower()
-                if "wakey" in text:
+                if "hades" in text:
                     print("Wake word detected!")
                     return
             except:
