@@ -139,6 +139,37 @@ class HadesGUI:
         self.add_system_message("HADES initialized. All systems nominal.")
         self._animate()
 
+        input_frame = tk.Frame(self.root, bg="#020408", pady=6)
+        input_frame.pack(fill=tk.X, padx=12, pady=(0, 10))
+
+        self.text_input = tk.Entry(
+            input_frame,
+            bg="#0a1a22", fg="#00cfff",
+            font=("Courier New", 11),
+            insertbackground="#00cfff",
+            relief=tk.FLAT,
+            bd=0)
+        self.text_input.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=8, padx=(0, 8))
+
+        send_btn = tk.Button(
+            input_frame,
+            text="SEND",
+            font=("Courier New", 9, "bold"),
+            fg="#00cfff", bg="#0a2a3a",
+            activeforeground="#00ffee",
+            activebackground="#0a3a4a",
+            relief=tk.FLAT, bd=0,
+            padx=12, pady=6,
+            cursor="hand2",
+            command=self._on_text_submit)
+        send_btn.pack(side=tk.RIGHT)
+
+        # Callback placeholder — gets set by main.py
+        self.on_text_command = None
+
+        # Bind Enter key AFTER method is defined below
+        self.root.after(0, lambda: self.text_input.bind("<Return>", self._on_text_submit))
+
     def _draw_grid(self):
         cx = 260
         for i in range(7):
@@ -285,7 +316,14 @@ class HadesGUI:
 
     def hide(self):
         self.root.after(0, self.root.withdraw)
-
+    
+    def _on_text_submit(self, event=None):
+        text = self.text_input.get().strip()
+        if not text or not self.on_text_command:
+            return
+        self.text_input.delete(0, tk.END)
+        import threading
+        threading.Thread(target=self.on_text_command, args=(text,), daemon=True).start()
 
 if __name__ == "__main__":
     import time, threading

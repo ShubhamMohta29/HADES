@@ -97,10 +97,16 @@ def handle_command(text):
         return "Muted, Sir."
 
     # ── Time & Date ─────────────────────────────────────────────────────────
-    if "time" in t:
+    # Use explicit phrases to avoid matching "timezone", "sometime", "all the time" etc.
+    time_phrases = ["what time", "what's the time", "current time",
+                    "tell me the time", "what is the time"]
+    date_phrases = ["what date", "what's the date", "current date",
+                    "today's date", "what day is it", "what is today"]
+
+    if any(p in t for p in time_phrases):
         now = datetime.datetime.now().strftime("%I:%M %p")
         return f"The time is {now}, Sir."
-    if "date" in t:
+    if any(p in t for p in date_phrases):
         today = datetime.datetime.now().strftime("%A, %B %d, %Y")
         return f"Today is {today}, Sir."
 

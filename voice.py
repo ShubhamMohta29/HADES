@@ -53,7 +53,7 @@ def wait_for_wake_word():
             try:
                 audio = recognizer.listen(source, timeout=5, phrase_time_limit=3)
                 text = recognizer.recognize_google(audio).lower()
-                if "hades" in text:
+                if "wakey" in text:
                     print("Wake word detected!")
                     return
             except:

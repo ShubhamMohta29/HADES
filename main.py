@@ -146,5 +146,18 @@ def hades_loop(gui):
 # ── Entry point ───────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     gui = HadesGUI()
+
+    # Handle text input from GUI
+    def handle_text_command(text):
+        gui.add_message("You", text)
+        gui.set_status("thinking")
+        response = route(text, gui)
+        gui.set_status("speaking")
+        speak(response)
+        gui.add_message("Hades", response)
+        gui.set_status("standby")
+
+    gui.on_text_command = handle_text_command  # connect callback
+
     threading.Thread(target=hades_loop, args=(gui,), daemon=True).start()
     gui.root.mainloop()
