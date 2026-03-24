@@ -37,10 +37,6 @@ cd HADES
 pip install -r requirements.txt
 ```
 
-> **Note:** `face_recognition` requires cmake and dlib. On Windows:
-> ```bash
-> pip install cmake dlib face_recognition
-> ```
 
 ### 3. Configure API keys
 ```bash
