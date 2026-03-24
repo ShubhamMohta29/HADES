@@ -20,7 +20,6 @@ A fully voice-activated AI assistant inspired by Iron Man's JARVIS, built with P
 | 🖥️ PC Control | Volume, apps, shutdown, lock, screenshots, clipboard |
 | 👁️ Screen Vision | Ask HADES to look at your screen — powered by Gemini |
 | 📝 Notes & Reminders | Voice-driven notes and timed reminders |
-| 🔒 Face Auth | Optional face recognition login (OpenCV) |
 | 🪟 GUI | Animated holographic dark-themed interface |
 
 ---
@@ -92,19 +91,6 @@ python main.py
 
 ---
 
-## 🔒 Face Recognition (Optional)
-
-Register your face:
-```bash
-python face_auth.py --register
-```
-
-Enable in `.env`:
-```
-FACE_AUTH_ENABLED=true
-```
-
----
 
 ## 🛠️ Tech Stack
 
@@ -116,7 +102,6 @@ FACE_AUTH_ENABLED=true
 - **PC Control:** pyautogui, psutil, pycaw
 - **APIs:** OpenWeatherMap, NewsAPI, Yahoo Finance, CoinGecko (all free)
 - **Spotify:** Spotipy
-- **Face Auth:** OpenCV + face_recognition
 
 ---
 
