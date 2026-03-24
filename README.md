@@ -1,5 +1,4 @@
 # H.A.D.E.S — Human Assistance and Decision Engine System
-
 A fully voice-activated AI assistant inspired by Iron Man's JARVIS, built with Python.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
@@ -13,15 +12,15 @@ A fully voice-activated AI assistant inspired by Iron Man's JARVIS, built with P
 | Feature | Description |
 |---|---|
 | 🎙️ Wake Word | Say **"HADES"** to activate — no button needed |
-| 🧠 AI Conversation | Powered by Groq LLaMA 3 with full memory |
+| 🧠 AI Conversation | Powered by Groq LLaMA 3.1 with persistent memory |
 | 🌤️ Weather | Real-time weather for any city |
 | 📰 News | Top headlines or topic-specific news |
 | 📈 Stocks & Crypto | Live prices via Yahoo Finance & CoinGecko |
-| 🎵 Spotify | Play, pause, skip, search by voice |
-| 🖥️ PC Control | Volume, apps, shutdown, lock, screenshots |
+| 🎵 Spotify | Play, pause, skip, search playlists & songs by voice |
+| 🖥️ PC Control | Volume, apps, shutdown, lock, screenshots, clipboard |
+| 👁️ Screen Vision | Ask HADES to look at your screen — powered by Gemini |
 | 📝 Notes & Reminders | Voice-driven notes and timed reminders |
-| 🔒 Face Auth | Optional face recognition login (OpenCV) |
-| 🪟 GUI | Sleek dark-themed chat interface |
+| 🪟 GUI | Animated holographic dark-themed interface |
 
 ---
 
@@ -29,8 +28,8 @@ A fully voice-activated AI assistant inspired by Iron Man's JARVIS, built with P
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/yourusername/Jarvis.git
-cd Jarvis
+git clone https://github.com/yourusername/HADES.git
+cd HADES
 ```
 
 ### 2. Install dependencies
@@ -38,15 +37,12 @@ cd Jarvis
 pip install -r requirements.txt
 ```
 
-> **Note:** `face_recognition` requires cmake and dlib. On Windows:
-> ```bash
-> pip install cmake dlib face_recognition
-> ```
 
 ### 3. Configure API keys
 ```bash
 cp .env.template .env
 ```
+
 Edit `.env` with your keys:
 
 | Key | Where to get it | Cost |
@@ -54,7 +50,10 @@ Edit `.env` with your keys:
 | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) | Free |
 | `WEATHER_API_KEY` | [openweathermap.org/api](https://openweathermap.org/api) | Free |
 | `NEWS_API_KEY` | [newsapi.org](https://newsapi.org) | Free |
+| `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com/app/apikey) | Free |
 | `SPOTIFY_*` | [developer.spotify.com](https://developer.spotify.com/dashboard) | Free |
+
+> Set your default city: `DEFAULT_CITY=Toronto`
 
 ### 4. Run
 ```bash
@@ -72,12 +71,15 @@ python main.py
 | *"Give me today's news"* | Top headlines |
 | *"What's Tesla's stock price"* | Stock price |
 | *"What's Bitcoin at"* | Crypto price |
-| *"Play Blinding Lights"* | Spotify |
+| *"Play Blinding Lights"* | Spotify song search |
+| *"Play my liked songs"* | Spotify liked songs |
 | *"Set volume to 60%"* | Volume control |
 | *"Open Chrome"* | Launch app |
 | *"Take a screenshot"* | Screenshot |
+| *"What's on my screen"* | Gemini screen analysis |
 | *"Remind me in 10 minutes to eat"* | Reminder |
 | *"Make a note: buy groceries"* | Save note |
+| *"Read my notes"* | Read notes back |
 | *"What's my battery"* | Battery status |
 | *"Shutdown in 30 minutes"* | Schedule shutdown |
 | *"Clear memory"* | Reset conversation |
@@ -85,46 +87,34 @@ python main.py
 
 ---
 
-## 🔒 Face Recognition (Optional)
-
-Register your face:
-```bash
-python face_auth.py --register
-```
-
-Enable in `.env`:
-```
-FACE_AUTH_ENABLED=true
-```
-
----
 
 ## 🛠️ Tech Stack
 
-- **LLM:** Groq (LLaMA 3.1) — free, fast inference
+- **LLM:** Groq (LLaMA 3.1 8B) — free, fast inference
 - **Speech:** SpeechRecognition + Google STT
 - **TTS:** pyttsx3 (offline)
-- **GUI:** Tkinter
+- **Vision:** Google Gemini 2.0 Flash
+- **GUI:** Tkinter (animated holographic orb)
 - **PC Control:** pyautogui, psutil, pycaw
 - **APIs:** OpenWeatherMap, NewsAPI, Yahoo Finance, CoinGecko (all free)
 - **Spotify:** Spotipy
-- **Face Auth:** OpenCV + face_recognition
 
 ---
 
 ## 📁 Project Structure
 
 ```
-Jarvis/
-├── main.py          # Entry point + voice loop
-├── brain.py         # AI with conversation memory
+HADES/
+├── main.py          # Entry point + voice loop + command router
+├── brain.py         # AI with persistent conversation memory
 ├── voice.py         # Wake word + STT + TTS
 ├── commands.py      # PC control commands
-├── gui.py           # Chat window GUI
+├── gui.py           # Animated holographic GUI
 ├── weather.py       # Weather API
 ├── news.py          # News API
 ├── stocks.py        # Stocks & crypto
 ├── spotify.py       # Spotify control
+├── vision.py        # Gemini screen analysis
 ├── face_auth.py     # Face recognition
 ├── config.py        # API key loader
 ├── requirements.txt
@@ -134,4 +124,5 @@ Jarvis/
 ---
 
 ## 📄 License
+
 MIT
