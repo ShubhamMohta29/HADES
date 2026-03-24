@@ -1,25 +1,38 @@
-import pyautogui
-from google import genai
-from google.genai import types
-from config import GEMINI_API_KEY
+import base64
 import io
+from PIL import ImageGrab
+import google.generativeai as genai
+from config import GEMINI_API_KEY
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
 
 def analyze_screen(prompt="What do you see on this screen? Help me with whatever is on it."):
     try:
-        screenshot = pyautogui.screenshot()
+        # Capture the screen
+        screenshot = ImageGrab.grab()
+        
+        # Convert to bytes
         img_bytes = io.BytesIO()
         screenshot.save(img_bytes, format="PNG")
-        image_data = img_bytes.getvalue()
-
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                types.Part.from_bytes(data=image_data, mime_type="image/png"),
-                prompt
-            ]
-        )
+        img_bytes.seek(0)
+        
+        # Encode to base64
+        image_data = base64.standard_b64encode(img_bytes.getvalue()).decode("utf-8")
+        
+        # Send to Gemini with image
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        response = model.generate_content([
+            {
+                "type": "image",
+                "data": image_data,
+                "mime_type": "image/png"
+            },
+            {
+                "type": "text",
+                "text": prompt
+            }
+        ])
+        
         return response.text
 
     except Exception as e:

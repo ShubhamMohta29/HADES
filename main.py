@@ -1,3 +1,7 @@
+"""This is the main class which runs the HADES assistant,
+handling the main loop, routing commands,
+and integrating all components together."""
+
 import threading
 import re
 import datetime
@@ -8,7 +12,7 @@ from commands import handle_command
 from gui import HadesGUI
 from config import FACE_AUTH_ENABLED, DEFAULT_CITY
 
-# ── Lazy imports for optional modules ────────────────────────────────────────
+# Lazy imports for optional modules
 def _weather(city):
     from weather import get_weather
     return get_weather(city)
@@ -29,27 +33,27 @@ def _spotify(text):
     from spotify import spotify_command
     return spotify_command(text)
 
-# ── Smart intent router ───────────────────────────────────────────────────────
+# Smart intent router
 def route(text, gui):
     t = text.lower()
 
-    # ── Memory ──────────────────────────────────────────────────────────────
+    # Memory
     if "clear memory" in t or "forget everything" in t:
         return clear_memory()
 
-    # ── Weather ─────────────────────────────────────────────────────────────
+    # Weather
     if "weather" in t:
         match = re.search(r'weather (?:in|for|at) ([a-zA-Z\s]+)', t)
         city = match.group(1).strip() if match else DEFAULT_CITY
         return _weather(city)
 
-    # ── News ────────────────────────────────────────────────────────────────
+    # News
     if "news" in t or "headlines" in t:
         match = re.search(r'news (?:about|on) ([a-zA-Z\s]+)', t)
         topic = match.group(1).strip() if match else None
         return _news(topic)
 
-    # ── Stocks ──────────────────────────────────────────────────────────────
+    # Stocks
     if "stock" in t:
         match = re.search(r'(?:stock|price of|how is)\s+([A-Za-z]+)', t)
         symbol = match.group(1) if match else None
@@ -65,19 +69,19 @@ def route(text, gui):
             if keyword in t:
                 return _crypto(coin_id)
 
-    # ── Spotify ─────────────────────────────────────────────────────────────
+    # Spotify
     if any(w in t for w in ["play", "pause", "skip", "next song", "previous song",
                              "what's playing", "shuffle", "resume music", "stop music"]):
         result = _spotify(text)
         if result:
             return result
 
-    # ── PC commands ─────────────────────────────────────────────────────────
+    # PC commands
     result = handle_command(text)
     if result:
         return result
     
-    # ── Screen analysis ─────────────────────────────────────────────────────
+    # Screen analysis
     if any(w in t for w in ["look at my screen", "what's on my screen", 
                         "help me with this", "what do you see",
                         "analyze my screen", "read my screen",
@@ -87,11 +91,11 @@ def route(text, gui):
         response = analyze_screen(f"The user says: '{text}'. Please help them based on what you see on screen.")
         return response
 
-    # ── Fallback to AI ──────────────────────────────────────────────────────
+    # Fallback to AI
     gui.set_status("thinking")
     return think(text)
 
-# ── Main loop ────────────────────────────────────────────────────────────────
+# Main loop
 def hades_loop(gui):
     # Optional face auth on startup
     if FACE_AUTH_ENABLED:
@@ -143,7 +147,7 @@ def hades_loop(gui):
             speak(response)
             gui.add_message("Hades", response)
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# Entry point
 if __name__ == "__main__":
     gui = HadesGUI()
 
