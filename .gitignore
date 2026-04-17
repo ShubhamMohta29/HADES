@@ -1,2 +1,27 @@
+# Secrets
 .env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+ 
+# Piper voice models (large binary files)
+voices/*.onnx
+voices/*.onnx.json
+ 
+# IDE
+.idea/
+ 
+# OS junk
+Thumbs.db
+.DS_Store
+ 
+# Notes and conversation history
+notes.txt
 conversation_history.json
+ 
+# Spotify auth cache
+.cache
+.cache-*

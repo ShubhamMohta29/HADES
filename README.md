@@ -1,4 +1,4 @@
-# H.A.D.E.S — Human Assistance and Decision Engine System
+# H.A.D.E.S — Human Assistance and Decision Engineering System
 A fully voice-activated AI assistant inspired by Iron Man's JARVIS, built with Python.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
@@ -28,7 +28,7 @@ A fully voice-activated AI assistant inspired by Iron Man's JARVIS, built with P
 
 ### 1. Clone the repo
 ```bash
-git clone https://github.com/yourusername/HADES.git
+git clone https://github.com/ShubhamMohta29/HADES.git
 cd HADES
 ```
 
@@ -50,10 +50,9 @@ Edit `.env` with your keys:
 | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) | Free |
 | `WEATHER_API_KEY` | [openweathermap.org/api](https://openweathermap.org/api) | Free |
 | `NEWS_API_KEY` | [newsapi.org](https://newsapi.org) | Free |
-| `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com/app/apikey) | Free |
 | `SPOTIFY_*` | [developer.spotify.com](https://developer.spotify.com/dashboard) | Free |
 
-> Set your default city: `DEFAULT_CITY=Toronto`
+> Set your default city: `DEFAULT_CITY`
 
 ### 4. Run
 ```bash
@@ -70,7 +69,7 @@ python main.py
 | *"What's the weather in London"* | Weather |
 | *"Give me today's news"* | Top headlines |
 | *"What's Tesla's stock price"* | Stock price |
-| *"What's Bitcoin at"* | Crypto price |
+| *"What's Bitcoin at"* | Crypto price | *In Progress*
 | *"Play Blinding Lights"* | Spotify song search |
 | *"Play my liked songs"* | Spotify liked songs |
 | *"Set volume to 60%"* | Volume control |
@@ -92,9 +91,9 @@ python main.py
 
 - **LLM:** Groq (LLaMA 3.1 8B) — free, fast inference
 - **Speech:** SpeechRecognition + Google STT
-- **TTS:** pyttsx3 (offline)
-- **Vision:** Google Gemini 2.0 Flash
-- **GUI:** Tkinter (animated holographic orb)
+- **TTS:** PiperTTS (offline)
+- **Vision:** Groq (LLaMA 3.1 8B)
+- **GUI:** PyWebview (animated holographic orb)
 - **PC Control:** pyautogui, psutil, pycaw
 - **APIs:** OpenWeatherMap, NewsAPI, Yahoo Finance, CoinGecko (all free)
 - **Spotify:** Spotipy
@@ -117,8 +116,11 @@ HADES/
 ├── vision.py        # Gemini screen analysis
 ├── face_auth.py     # Face recognition
 ├── config.py        # API key loader
+├── frontend/
+│   └── index.html
 ├── requirements.txt
-└── .env.template
+├── .env.example
+└── .gitignore
 ```
 
 ---

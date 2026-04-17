@@ -1,18 +1,23 @@
-"""This is the main class which runs the HADES assistant,
-handling the main loop, routing commands,
-and integrating all components together."""
+"""HADES main loop + intent router."""
 
 import threading
 import re
-import datetime
-
+import logging
+import time;
 from voice import listen, speak, wait_for_wake_word
 from brain import think, clear_memory
 from commands import handle_command
 from gui import HadesGUI
 from config import FACE_AUTH_ENABLED, DEFAULT_CITY
 
-# Lazy imports for optional modules
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("hades.main")
+
+# ── Lazy imports for optional modules ───────────────────────────────────────
 def _weather(city):
     from weather import get_weather
     return get_weather(city)
@@ -33,71 +38,86 @@ def _spotify(text):
     from spotify import spotify_command
     return spotify_command(text)
 
-# Smart intent router
+# ── Intent patterns ─────────────────────────────────────────────────────────
+# Order matters — first match wins.
+
+SCREEN_WORDS = (
+    "look at my screen", "what's on my screen", "what is on my screen",
+    "analyze my screen", "read my screen", "what do you see",
+    "help me with my homework", "solve this on screen",
+)
+
+SPOTIFY_WORDS = (
+    "play my", "play the", "play some", "pause music", "resume music",
+    "stop music", "skip song", "next song", "previous song",
+    "what's playing", "what is playing", "shuffle",
+)
+
+CRYPTO_COINS = {
+    "bitcoin": "bitcoin", "btc": "bitcoin",
+    "ethereum": "ethereum", "eth": "ethereum",
+    "solana": "solana", "sol": "solana",
+    "dogecoin": "dogecoin", "doge": "dogecoin",
+    "cardano": "cardano", "ada": "cardano",
+    "ripple": "ripple", "xrp": "ripple",
+}
+
+
 def route(text, gui):
     t = text.lower()
 
-    # Memory
+    # ── Memory reset ────────────────────────────────────────────────────────
     if "clear memory" in t or "forget everything" in t:
         return clear_memory()
 
-    # Weather
+    # ── Screen analysis (check BEFORE PC commands so "help me" doesn't collide)
+    if any(w in t for w in SCREEN_WORDS):
+        from vision import analyze_screen
+        return analyze_screen(
+            f"The user says: '{text}'. Please help them based on what's on screen."
+        )
+
+    # ── Weather ─────────────────────────────────────────────────────────────
     if "weather" in t:
-        match = re.search(r'weather (?:in|for|at) ([a-zA-Z\s]+)', t)
-        city = match.group(1).strip() if match else DEFAULT_CITY
+        m = re.search(r"weather\s+(?:in|for|at)\s+([a-zA-Z\s]+)", t)
+        city = m.group(1).strip() if m else DEFAULT_CITY
         return _weather(city)
 
-    # News
+    # ── News ────────────────────────────────────────────────────────────────
     if "news" in t or "headlines" in t:
-        match = re.search(r'news (?:about|on) ([a-zA-Z\s]+)', t)
-        topic = match.group(1).strip() if match else None
+        m = re.search(r"news\s+(?:about|on)\s+([a-zA-Z\s]+)", t)
+        topic = m.group(1).strip() if m else None
         return _news(topic)
 
-    # Stocks
-    if "stock" in t:
-        match = re.search(r'(?:stock|price of|how is)\s+([A-Za-z]+)', t)
-        symbol = match.group(1) if match else None
-        if symbol:
-            return _stock(symbol)
+    # ── Stocks ──────────────────────────────────────────────────────────────
+    if re.search(r"\bstock\b|\bshare price\b", t):
+        m = re.search(r"(?:stock|price of|how is)\s+([A-Za-z]{1,6})", t)
+        if m:
+            return _stock(m.group(1))
 
     # ── Crypto ──────────────────────────────────────────────────────────────
-    if any(c in t for c in ["bitcoin", "ethereum", "crypto", "btc", "eth"]):
-        coins = {"bitcoin": "bitcoin", "btc": "bitcoin",
-                 "ethereum": "ethereum", "eth": "ethereum",
-                 "crypto": "bitcoin"}
-        for keyword, coin_id in coins.items():
-            if keyword in t:
-                return _crypto(coin_id)
+    for keyword, coin_id in CRYPTO_COINS.items():
+        if re.search(rf"\b{re.escape(keyword)}\b", t):
+            return _crypto(coin_id)
 
-    # Spotify
-    if any(w in t for w in ["play", "pause", "skip", "next song", "previous song",
-                             "what's playing", "shuffle", "resume music", "stop music"]):
+    # ── Spotify (tighter triggers so it doesn't hijack "play Tesla stock") ──
+    if any(w in t for w in SPOTIFY_WORDS):
         result = _spotify(text)
         if result:
             return result
 
-    # PC commands
+    # ── PC commands (time, volume, apps, notes, etc.) ───────────────────────
     result = handle_command(text)
     if result:
         return result
-    
-    # Screen analysis
-    if any(w in t for w in ["look at my screen", "what's on my screen", 
-                        "help me with this", "what do you see",
-                        "analyze my screen", "read my screen",
-                        "help me with my homework", "solve this"]):
-        from vision import analyze_screen
-        # Use whatever the user said as the prompt for more context
-        response = analyze_screen(f"The user says: '{text}'. Please help them based on what you see on screen.")
-        return response
 
-    # Fallback to AI
+    # ── Fallback to AI brain ────────────────────────────────────────────────
     gui.set_status("thinking")
     return think(text)
 
-# Main loop
+
+# ── Main voice loop ─────────────────────────────────────────────────────────
 def hades_loop(gui):
-    # Optional face auth on startup
     if FACE_AUTH_ENABLED:
         gui.add_system_message("Face verification required...")
         from face_auth import verify_face
@@ -113,55 +133,61 @@ def hades_loop(gui):
     gui.add_system_message("All systems nominal. Waiting for activation.")
 
     while True:
-        gui.set_status("standby")
-        wait_for_wake_word()
+        try:
+            gui.set_status("standby")
+            wait_for_wake_word()
 
-        gui.set_status("listening")
-        speak("Yes, Sir?")
-        gui.add_message("Hades", "Yes, Sir?")
-
-        # Stay active until sleep command
-        while True:
             gui.set_status("listening")
-            user_input = listen()
+            time.sleep(0.3)
+            speak("Yes, Sir?")
+            gui.add_message("Hades", "Yes, Sir?")
 
-            if not user_input:
-                continue
+            while True:
+                gui.set_status("listening")
+                user_input = listen()
+                if not user_input:
+                    continue
 
-            gui.add_message("You", user_input)
-            t = user_input.lower()
+                gui.add_message("You", user_input)
+                t = user_input.lower()
 
-            # Sleep / deactivate
-            if any(w in t for w in ["sleep", "goodbye", "that's all", "stand by"]):
-                response = "Standing by, Sir. Call me when you need me."
+                if any(w in t for w in ("sleep", "goodbye", "that's all", "stand by")):
+                    response = "Standing by, Sir. Call me when you need me."
+                    speak(response)
+                    gui.add_message("Hades", response)
+                    gui.set_status("standby")
+                    break
+
+                gui.set_status("thinking")
+                response = route(user_input, gui)
+                gui.set_status("speaking")
                 speak(response)
                 gui.add_message("Hades", response)
-                gui.set_status("standby")
-                break
+        except KeyboardInterrupt:
+            log.info("Shutting down...")
+            return
+        except Exception as e:
+            log.exception("Error in main loop: %s", e)
+            # Don't crash — loop back to standby
 
-            # Route and respond
-            gui.set_status("thinking")
-            response = route(user_input, gui)
 
-            gui.set_status("speaking")
-            speak(response)
-            gui.add_message("Hades", response)
-
-# Entry point
+# ── Entry point ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     gui = HadesGUI()
 
-    # Handle text input from GUI
     def handle_text_command(text):
-        gui.add_message("You", text)
-        gui.set_status("thinking")
-        response = route(text, gui)
-        gui.set_status("speaking")
-        speak(response)
-        gui.add_message("Hades", response)
-        gui.set_status("standby")
+        try:
+            gui.add_message("You", text)
+            gui.set_status("thinking")
+            response = route(text, gui)
+            gui.set_status("speaking")
+            speak(response)
+            gui.add_message("Hades", response)
+            gui.set_status("standby")
+        except Exception as e:
+            log.exception("Text command error: %s", e)
 
-    gui.on_text_command = handle_text_command  # connect callback
+    gui.on_text_command = handle_text_command
 
     threading.Thread(target=hades_loop, args=(gui,), daemon=True).start()
     gui.root.mainloop()
