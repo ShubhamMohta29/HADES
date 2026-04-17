@@ -1,69 +1,127 @@
-"""This module defines the core logic for the HADES assistant."""
-
+"""Core AI logic for HADES — Groq Llama 3.3 70B with persistent, trimmed memory."""
 
 import json
+import threading
+import logging
 from pathlib import Path
-from groq import Groq
+from groq import Groq, GroqError
 from config import GROQ_API_KEY
+
+log = logging.getLogger("hades.brain")
+
+if not GROQ_API_KEY:
+    raise RuntimeError("GROQ_API_KEY is not set. Add it to your .env file.")
 
 client = Groq(api_key=GROQ_API_KEY)
 
-# Conversation history persistence 
+# Model & memory settings
+MODEL = "llama-3.3-70b-versatile"   # upgraded from llama-3.1-8b-instant
+MAX_TOKENS = 400
+MAX_HISTORY_TURNS = 20              # keep system prompt + last N user/assistant pairs
+
 HISTORY_FILE = Path(__file__).parent / "conversation_history.json"
 
-SYSTEM_PROMPT = """You are HADES (Human Assistance and Decision Engine System), 
-an AI assistant. You are highly intelligent, witty, and occasionally sarcastic.
-You may address the user as Neo, but not always. Sometimes use Sir, or use nothing
-at all. You are concise unless asked for detail. You never say you cannot do
-something without offering an alternative.
-Examples of your tone:
-- 'Certainly, Neo. Right away.'
-- 'I've taken the liberty of preparing that for you, Sir.'
-- 'Might I suggest an alternative approach?'
-- 'All systems are functioning within normal parameters.'
+SYSTEM_PROMPT = """You are HADES (Human Assistance and Decision Engine System),
+an AI assistant inspired by JARVIS. You are highly intelligent, witty, and
+occasionally sarcastic. Address the user as Sir by default, but vary it —
+sometimes use their name if given, sometimes nothing at all.
+
+Rules:
+- Be concise unless asked for detail. Voice output means long answers are painful.
+- Never refuse without offering an alternative.
+- Your responses will be spoken aloud, so avoid markdown, bullet points, or code
+  blocks unless specifically asked. Write naturally, as if speaking.
+- Keep responses under 3 sentences when possible.
+
+Tone examples:
+- "Certainly, Sir. Right away."
+- "I've taken the liberty of preparing that for you."
+- "Might I suggest an alternative approach?"
+- "All systems functioning within normal parameters."
 """
 
-def load_memory():
-    """Load conversation history from file if it exists."""
-    if HISTORY_FILE.exists():
-        try:
-            with open(HISTORY_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Could not load history: {e}. Starting fresh.")
-    
-    # Return default system prompt if no history file
+# Thread-safe access to conversation history
+_lock = threading.Lock()
+
+
+def _default_history():
     return [{"role": "system", "content": SYSTEM_PROMPT}]
 
+
+def load_memory():
+    """Load conversation history from disk, or return a fresh one."""
+    if HISTORY_FILE.exists():
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list) and data and data[0].get("role") == "system":
+                    # Refresh system prompt in case we've updated it
+                    data[0]["content"] = SYSTEM_PROMPT
+                    return data
+        except Exception as e:
+            log.warning("Could not load history (%s). Starting fresh.", e)
+    return _default_history()
+
+
 def save_memory(history):
-    """Save conversation history to file."""
     try:
-        with open(HISTORY_FILE, 'w') as f:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history, f, indent=2)
     except Exception as e:
-        print(f"Could not save history: {e}")
+        log.warning("Could not save history: %s", e)
 
-# sets the tone and context for the assistant, and is retained in memory until cleared.
+
+def _trim(history):
+    """Keep system prompt + last MAX_HISTORY_TURNS * 2 messages."""
+    if len(history) <= 1 + MAX_HISTORY_TURNS * 2:
+        return history
+    return [history[0]] + history[-MAX_HISTORY_TURNS * 2 :]
+
+
 conversation_history = load_memory()
 
-def think(user_input):
-    """Sends the conversation history plus the new user input to the Groq API and
-    returns the assistant's reply."""
-    
-    conversation_history.append({"role": "user", "content": user_input})
-    response = client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=conversation_history,
-        max_tokens=300
-    )
-    reply = response.choices[0].message.content
-    conversation_history.append({"role": "assistant", "content": reply})
-    save_memory(conversation_history)
+
+def think(user_input: str) -> str:
+    """Send user input + history to Groq, return assistant reply."""
+    with _lock:
+        conversation_history.append({"role": "user", "content": user_input})
+        messages = list(conversation_history)  # snapshot for the API call
+
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            max_tokens=MAX_TOKENS,
+            temperature=0.7,
+        )
+        reply = response.choices[0].message.content.strip()
+    except GroqError as e:
+        log.error("Groq API error: %s", e)
+        # Roll back the user message we just appended
+        with _lock:
+            if conversation_history and conversation_history[-1]["role"] == "user":
+                conversation_history.pop()
+        return "My connection to the language server is disrupted, Sir. Try again in a moment."
+    except Exception as e:
+        log.exception("Unexpected error in think(): %s", e)
+        with _lock:
+            if conversation_history and conversation_history[-1]["role"] == "user":
+                conversation_history.pop()
+        return "I've encountered an unexpected fault, Sir. My apologies."
+
+    with _lock:
+        conversation_history.append({"role": "assistant", "content": reply})
+        trimmed = _trim(conversation_history)
+        conversation_history[:] = trimmed
+        save_memory(conversation_history)
+
     return reply
 
-def clear_memory():
+
+def clear_memory() -> str:
+    """Reset conversation to just the system prompt."""
     global conversation_history
-    system_prompt = conversation_history[0]
-    conversation_history = [system_prompt]
-    save_memory(conversation_history)
+    with _lock:
+        conversation_history = _default_history()
+        save_memory(conversation_history)
     return "Memory cleared, Sir."

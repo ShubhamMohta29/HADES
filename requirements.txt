@@ -1,0 +1,20 @@
+groq
+speechrecognition
+pyaudio
+requests
+psutil
+pyautogui
+pyperclip
+pycaw; platform_system == "Windows"
+comtypes; platform_system == "Windows"
+python-dotenv
+spotipy
+opencv-python
+face_recognition
+Pillow
+google-generativeai
+pywebview
+piper-tts
+sounddevice
+numpy
+soundfile

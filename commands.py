@@ -1,11 +1,17 @@
+"""PC control commands: volume, apps, time, battery, reminders, notes, etc."""
+
 import webbrowser
 import subprocess
 import os
 import re
 import datetime
+import threading
+import logging
+
 import psutil
 import pyautogui
-import threading
+
+log = logging.getLogger("hades.commands")
 
 # ── Volume control ──────────────────────────────────────────────────────────
 try:
@@ -16,21 +22,26 @@ try:
 except ImportError:
     PYCAW_AVAILABLE = False
 
+
 def set_volume(level):
     if not PYCAW_AVAILABLE:
-        return f"pycaw not installed. Run: pip install pycaw"
+        return "pycaw not installed (or not on Windows), Sir."
     devices = AudioUtilities.GetSpeakers()
     interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
     volume = cast(interface, POINTER(IAudioEndpointVolume))
     volume.SetMasterVolumeLevelScalar(level / 100, None)
 
+
 # ── Apps & websites ─────────────────────────────────────────────────────────
+# Use %USERNAME% expansion + env LOCALAPPDATA for portability.
+LOCAL_APPDATA = os.environ.get("LOCALAPPDATA", os.path.expanduser(r"~\AppData\Local"))
+
 APPS = {
     "chrome":       r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-    "spotify":      os.path.expanduser(r"C:\Users\shubh\AppData\Local\Microsoft\WindowsApps\Spotify.exe"),
+    "spotify":      os.path.join(LOCAL_APPDATA, "Microsoft", "WindowsApps", "Spotify.exe"),
     "notepad":      "notepad.exe",
     "calculator":   "calc.exe",
-    "vscode":       os.path.expanduser(r"~\AppData\Local\Programs\Microsoft VS Code\Code.exe"),
+    "vscode":       os.path.join(LOCAL_APPDATA, "Programs", "Microsoft VS Code", "Code.exe"),
     "explorer":     "explorer.exe",
     "task manager": "taskmgr.exe",
     "word":         r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE",
@@ -50,40 +61,42 @@ WEBSITES = {
 }
 
 # ── Reminders ───────────────────────────────────────────────────────────────
-reminders = []
-
 def set_reminder(text, seconds):
     def _remind():
         import time
         time.sleep(seconds)
         from voice import speak
         speak(f"Sir, reminder: {text}")
-        print(f"⏰ REMINDER: {text}")
+        log.info("⏰ REMINDER: %s", text)
     threading.Thread(target=_remind, daemon=True).start()
+
 
 # ── Notes ───────────────────────────────────────────────────────────────────
 NOTES_FILE = os.path.join(os.path.dirname(__file__), "notes.txt")
 
+
 def save_note(note):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-    with open(NOTES_FILE, "a") as f:
+    with open(NOTES_FILE, "a", encoding="utf-8") as f:
         f.write(f"[{timestamp}] {note}\n")
+
 
 def read_notes():
     if not os.path.exists(NOTES_FILE):
         return "No notes found, Sir."
-    with open(NOTES_FILE, "r") as f:
+    with open(NOTES_FILE, "r", encoding="utf-8") as f:
         content = f.read().strip()
     return content if content else "Your notes are empty, Sir."
 
-# ── Main command handler ─────────────────────────────────────────────────────
+
+# ── Main command handler ────────────────────────────────────────────────────
 def handle_command(text):
     t = text.lower()
 
     # ── Volume ──────────────────────────────────────────────────────────────
-    match = re.search(r'volume.*?(\d+)', t)
-    if match:
-        level = max(0, min(100, int(match.group(1))))
+    m = re.search(r"volume.*?(\d+)", t)
+    if m:
+        level = max(0, min(100, int(m.group(1))))
         set_volume(level)
         return f"Volume set to {level}%, Sir."
     if "volume up" in t:
@@ -97,18 +110,14 @@ def handle_command(text):
         return "Muted, Sir."
 
     # ── Time & Date ─────────────────────────────────────────────────────────
-    # Use explicit phrases to avoid matching "timezone", "sometime", "all the time" etc.
     time_phrases = ["what time", "what's the time", "current time",
                     "tell me the time", "what is the time"]
     date_phrases = ["what date", "what's the date", "current date",
                     "today's date", "what day is it", "what is today"]
-
     if any(p in t for p in time_phrases):
-        now = datetime.datetime.now().strftime("%I:%M %p")
-        return f"The time is {now}, Sir."
+        return f"The time is {datetime.datetime.now().strftime('%I:%M %p')}, Sir."
     if any(p in t for p in date_phrases):
-        today = datetime.datetime.now().strftime("%A, %B %d, %Y")
-        return f"Today is {today}, Sir."
+        return f"Today is {datetime.datetime.now().strftime('%A, %B %d, %Y')}, Sir."
 
     # ── Battery ─────────────────────────────────────────────────────────────
     if "battery" in t:
@@ -122,7 +131,7 @@ def handle_command(text):
     if "screenshot" in t:
         path = os.path.expanduser("~/Desktop/screenshot.png")
         pyautogui.screenshot(path)
-        return f"Screenshot saved to your Desktop, Sir."
+        return "Screenshot saved to your Desktop, Sir."
 
     # ── Clipboard ───────────────────────────────────────────────────────────
     if "clipboard" in t or "what did i copy" in t:
@@ -132,10 +141,10 @@ def handle_command(text):
 
     # ── PC power ────────────────────────────────────────────────────────────
     if "shutdown" in t or "shut down" in t:
-        match = re.search(r'(\d+)\s*minute', t)
-        seconds = int(match.group(1)) * 60 if match else 0
+        m = re.search(r"(\d+)\s*minute", t)
+        seconds = int(m.group(1)) * 60 if m else 0
         os.system(f"shutdown /s /t {seconds}")
-        mins = f"in {match.group(1)} minutes" if match else "now"
+        mins = f"in {m.group(1)} minutes" if m else "now"
         return f"Shutting down {mins}, Sir."
     if "restart" in t:
         os.system("shutdown /r /t 5")
@@ -149,37 +158,40 @@ def handle_command(text):
 
     # ── Notes ───────────────────────────────────────────────────────────────
     if "make a note" in t or "take a note" in t or "note that" in t:
-        note = re.sub(r'.*(note that|make a note|take a note)[:\s]*', '', t).strip()
+        note = re.sub(r".*(note that|make a note|take a note)[:\s]*", "", t).strip()
         if note:
             save_note(note)
-            return f"Note saved, Sir."
+            return "Note saved, Sir."
     if "read my notes" in t or "show my notes" in t:
         return read_notes()
 
     # ── Reminders ───────────────────────────────────────────────────────────
     # "remind me in 10 minutes to call mom"
-    match = re.search(r'remind me in (\d+) (minute|hour|second)', t)
-    if match:
-        amount = int(match.group(1))
-        unit = match.group(2)
-        seconds = amount * (60 if unit == "minute" else 3600 if unit == "hour" else 1)
-        task = re.sub(r'.*remind me in \d+ (minute|hour|second)s? ?(to)?', '', t).strip()
-        set_reminder(task or "reminder", seconds)
-        return f"I'll remind you in {amount} {unit}{'s' if amount > 1 else ''}, Sir."
+    m = re.search(
+        r"remind me in (\d+) (second|minute|hour)s?(?:\s+to\s+(.+))?",
+        t,
+    )
+    if m:
+        amount = int(m.group(1))
+        unit = m.group(2)
+        task = (m.group(3) or "reminder").strip()
+        mult = {"second": 1, "minute": 60, "hour": 3600}[unit]
+        set_reminder(task, amount * mult)
+        return f"I'll remind you in {amount} {unit}{'s' if amount != 1 else ''}, Sir."
 
     # ── Search web ──────────────────────────────────────────────────────────
     if "search for" in t or "google" in t:
-        query = re.sub(r'.*(search for|google)[:\s]*', '', t).strip()
+        query = re.sub(r".*(search for|google)[:\s]*", "", t).strip()
         webbrowser.open(f"https://www.google.com/search?q={query.replace(' ', '+')}")
         return f"Searching for {query}, Sir."
 
-    # ── Open websites ────────────────────────────────────────────────────────
+    # ── Open websites ───────────────────────────────────────────────────────
     for site, url in WEBSITES.items():
         if site in t:
             webbrowser.open(url)
             return f"Opening {site}, Sir."
 
-    # ── Open apps ────────────────────────────────────────────────────────────
+    # ── Open apps ───────────────────────────────────────────────────────────
     for app, path in APPS.items():
         if app in t:
             try:
@@ -190,13 +202,12 @@ def handle_command(text):
 
     # ── System info ─────────────────────────────────────────────────────────
     if "cpu" in t or "processor" in t:
-        cpu = psutil.cpu_percent(interval=1)
-        return f"CPU usage is at {cpu}%, Sir."
+        return f"CPU usage is at {psutil.cpu_percent(interval=1)}%, Sir."
     if "ram" in t or "memory usage" in t:
         ram = psutil.virtual_memory()
         return f"RAM usage is {ram.percent}%, with {round(ram.available / (1024**3), 1)}GB available, Sir."
     if "disk" in t or "storage" in t:
-        disk = psutil.disk_usage('/')
+        disk = psutil.disk_usage("/")
         return f"Disk usage is {disk.percent}%, with {round(disk.free / (1024**3), 1)}GB free, Sir."
 
-    return None  # No command matched — send to AI
+    return None  # fall through to AI

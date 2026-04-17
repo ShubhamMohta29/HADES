@@ -1,37 +1,187 @@
-import speech_recognition as sr
-import pyttsx3
+"""Voice I/O for HADES — Piper TTS for speech, SpeechRecognition for input."""
 
+import os
+import io
+import logging
+import subprocess
+import shutil
+import tempfile
+import threading
+from pathlib import Path
+from config import PIPER_MODEL as _CONFIG_PIPER_MODEL
+import speech_recognition as sr
+
+log = logging.getLogger("hades.voice")
+
+# ── Piper TTS setup ─────────────────────────────────────────────────────────
+# Piper is a fast, offline neural TTS. You need:
+#   1. pip install piper-tts
+#   2. A voice model (.onnx + .onnx.json) — download from:
+#      https://github.com/rhasspy/piper/blob/master/VOICES.md
+#
+# Recommended voices for a JARVIS feel:
+#   - en_GB-alan-medium      (British male, calm — most JARVIS-like)
+#   - en_GB-northern_english_male-medium
+#   - en_US-ryan-high        (US male, deep)
+#
+# Place the .onnx file in ./voices/ (or set PIPER_MODEL in .env)
+
+VOICES_DIR = Path(__file__).parent / "voices"
+PIPER_MODEL = _CONFIG_PIPER_MODEL or str(VOICES_DIR / "en_GB-alan-medium.onnx")
+
+_PIPER_OK = False
+_piper_voice = None  # lazy-init piper voice object
+
+try:
+    # Prefer the Python API if available (faster — no subprocess per call)
+    from piper import PiperVoice
+    _PIPER_API = True
+except Exception:
+    _PIPER_API = False
+
+try:
+    import sounddevice as sd
+    import numpy as np
+    _AUDIO_OK = True
+except Exception:
+    _AUDIO_OK = False
+
+
+def _init_piper():
+    """Lazy init of Piper. Returns True if ready."""
+    global _PIPER_OK, _piper_voice
+    if _PIPER_OK:
+        return True
+
+    model_path = Path(PIPER_MODEL)
+    if not model_path.exists():
+        log.error(
+            "Piper voice model not found at %s. "
+            "Download one from https://github.com/rhasspy/piper/blob/master/VOICES.md "
+            "and place the .onnx + .onnx.json files in ./voices/",
+            model_path,
+        )
+        return False
+
+    if _PIPER_API:
+        try:
+            _piper_voice = PiperVoice.load(str(model_path))
+            _PIPER_OK = True
+            log.info("Piper TTS initialized with voice: %s", model_path.name)
+            return True
+        except Exception as e:
+            log.error("Piper API init failed: %s — falling back to CLI", e)
+
+    # Fallback: look for piper CLI on PATH
+    if shutil.which("piper"):
+        _PIPER_OK = True
+        log.info("Piper CLI detected; using subprocess mode")
+        return True
+
+    log.error("Neither piper-tts Python package nor piper CLI is available.")
+    return False
+
+
+def _speak_piper_api(text: str):
+    """Synthesize + play audio via Piper Python API + sounddevice."""
+    if not _AUDIO_OK:
+        log.error("sounddevice/numpy not installed — cannot play Piper audio")
+        return
+
+    # Piper yields AudioChunk-like objects with float32 samples and sample_rate
+    sample_rate = _piper_voice.config.sample_rate
+    chunks = []
+    for audio_chunk in _piper_voice.synthesize(text):
+        # piper >=1.3 returns AudioChunk with .audio_int16_array; older returns bytes
+        if hasattr(audio_chunk, "audio_int16_array"):
+            chunks.append(np.array(audio_chunk.audio_int16_array, dtype=np.int16))
+        else:
+            chunks.append(np.frombuffer(audio_chunk, dtype=np.int16))
+
+    if not chunks:
+        return
+    audio = np.concatenate(chunks)
+    sd.play(audio, samplerate=sample_rate, blocking=True)
+
+
+def _speak_piper_cli(text: str):
+    """Synthesize + play via piper CLI."""
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        wav_path = f.name
+    try:
+        subprocess.run(
+            ["piper", "--model", PIPER_MODEL, "--output_file", wav_path],
+            input=text.encode("utf-8"),
+            check=True,
+            capture_output=True,
+        )
+        # Play the WAV. Try sounddevice first, then OS-native fallbacks.
+        if _AUDIO_OK:
+            import soundfile as sf
+            data, sr_ = sf.read(wav_path)
+            sd.play(data, sr_, blocking=True)
+        else:
+            # Platform fallbacks
+            if os.name == "nt":
+                import winsound
+                winsound.PlaySound(wav_path, winsound.SND_FILENAME)
+            else:
+                subprocess.run(["aplay", wav_path], check=False)
+    finally:
+        try:
+            os.remove(wav_path)
+        except OSError:
+            pass
+
+
+_speak_lock = threading.Lock()
+
+
+def speak(text: str):
+    """Say text aloud. Thread-safe (serializes concurrent calls)."""
+    if not text:
+        return
+    print("Hades:", text)
+
+    if not _init_piper():
+        # Ultimate fallback: just print
+        return
+
+    with _speak_lock:
+        try:
+            if _PIPER_API and _piper_voice is not None:
+                _speak_piper_api(text)
+            else:
+                _speak_piper_cli(text)
+        except Exception as e:
+            log.exception("Piper speak failed: %s", e)
+
+
+# ── Speech recognition ──────────────────────────────────────────────────────
 recognizer = sr.Recognizer()
-recognizer.pause_threshold = 0.8        # seconds of silence before cutting off
+recognizer.pause_threshold = 0.8
 recognizer.phrase_threshold = 0.3
 recognizer.non_speaking_duration = 0.8
 recognizer.dynamic_energy_threshold = True
 recognizer.energy_threshold = 300
 
-def speak(text):
-    print("Hades:", text)
-    engine = pyttsx3.init()
-    voices = engine.getProperty('voices')
-    for voice in voices:
-        if 'male' in voice.name.lower() or 'david' in voice.name.lower() or 'mark' in voice.name.lower():
-            engine.setProperty('voice', voice.id)
-            break
-    engine.setProperty('rate', 165)
-    engine.setProperty('volume', 1.0)
-    engine.say(text)
-    engine.runAndWait()
-    engine.stop()
+WAKE_WORDS = ("hades", "ades", "hadez", "hades.")  # tolerate STT mishears
 
-def listen():
-    with sr.Microphone() as source:
-        print("Listening...")
-        recognizer.adjust_for_ambient_noise(source, duration=0.5)
-        try:
-            # No phrase_time_limit = unlimited time to speak
-            # pause_threshold controls when it stops after silence
-            audio = recognizer.listen(source, timeout=10)
-        except sr.WaitTimeoutError:
-            return None
+
+def listen(timeout: int = 10):
+    """Listen once; return transcript or None."""
+    try:
+        with sr.Microphone() as source:
+            print("Listening...")
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            try:
+                audio = recognizer.listen(source, timeout=timeout)
+            except sr.WaitTimeoutError:
+                return None
+    except OSError as e:
+        log.error("Microphone error: %s", e)
+        return None
+
     try:
         text = recognizer.recognize_google(audio)
         print("You:", text)
@@ -39,59 +189,31 @@ def listen():
     except sr.UnknownValueError:
         return None
     except sr.RequestError as e:
-        print(f"Speech API error: {e}")
+        log.error("Speech API error: %s", e)
         return None
     except Exception as e:
-        print(f"Listen error: {e}")
+        log.exception("Listen error: %s", e)
         return None
 
-def wait_for_wake_word():
-    print("Waiting for wake word...")
-    while True:
-        with sr.Microphone() as source:
-            recognizer.adjust_for_ambient_noise(source, duration=0.3)
-            try:
-                audio = recognizer.listen(source, timeout=5, phrase_time_limit=3)
-                text = recognizer.recognize_google(audio).lower()
-                if "wakey" in text:
-                    print("Wake word detected!")
-                    return
-            except:
-                pass
 
-def listen():
-    with sr.Microphone() as source:
-        print("Listening...")
-        recognizer.adjust_for_ambient_noise(source, duration=0.5)
+def wait_for_wake_word():
+    """Block until user says 'HADES'."""
+    print("Waiting for wake word ('HADES')...")
+    while True:
         try:
-            # No phrase_time_limit = unlimited time to speak
-            # pause_threshold controls when it stops after silence
-            audio = recognizer.listen(source, timeout=10)
-        except sr.WaitTimeoutError:
-            return None
-    try:
-        text = recognizer.recognize_google(audio)
-        print("You:", text)
-        return text
-    except sr.UnknownValueError:
-        return None
-    except sr.RequestError as e:
-        print(f"Speech API error: {e}")
-        return None
-    except Exception as e:
-        print(f"Listen error: {e}")
-        return None
-
-def wait_for_wake_word():
-    print("Waiting for wake word...")
-    while True:
-        with sr.Microphone() as source:
-            recognizer.adjust_for_ambient_noise(source, duration=0.3)
-            try:
+            with sr.Microphone() as source:
+                recognizer.adjust_for_ambient_noise(source, duration=0.3)
                 audio = recognizer.listen(source, timeout=5, phrase_time_limit=3)
-                text = recognizer.recognize_google(audio).lower()
-                if "wakey" in text:
-                    print("Wake word detected!")
-                    return
-            except:
-                pass
+            text = recognizer.recognize_google(audio).lower()
+            if any(w in text for w in WAKE_WORDS):
+                print("Wake word detected!")
+                return
+        except sr.WaitTimeoutError:
+            continue
+        except sr.UnknownValueError:
+            continue
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            log.debug("wake-word loop: %s", e)
+            continue
