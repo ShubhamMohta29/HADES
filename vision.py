@@ -1,41 +1,69 @@
+"""Screen vision via Groq Llama 4 Scout — free, no extra API key needed."""
+
 import base64
 import io
+import logging
 from PIL import ImageGrab
-import google.generativeai as genai
-from config import GEMINI_API_KEY
+from groq import Groq, GroqError
+from config import GROQ_API_KEY
 
-genai.configure(api_key=GEMINI_API_KEY)
+log = logging.getLogger("hades.vision")
 
-def analyze_screen(prompt="What do you see on this screen? Help me with whatever is on it."):
+client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+
+MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+
+
+def analyze_screen(prompt: str = "What do you see on this screen? Help me with whatever is on it.") -> str:
+    if not client:
+        return "Vision system offline — no Groq API key configured, Sir."
+
     try:
-        # Capture the screen
         screenshot = ImageGrab.grab()
-        
-        # Convert to bytes
-        img_bytes = io.BytesIO()
-        screenshot.save(img_bytes, format="PNG")
-        img_bytes.seek(0)
-        
-        # Encode to base64
-        image_data = base64.standard_b64encode(img_bytes.getvalue()).decode("utf-8")
-        
-        # Send to Gemini with image
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        response = model.generate_content([
-            {
-                "type": "image",
-                "data": image_data,
-                "mime_type": "image/png"
-            },
-            {
-                "type": "text",
-                "text": prompt
-            }
-        ])
-        
-        return response.text
 
+        # Resize to save tokens — 1280px wide is plenty for screen reading
+        max_width = 1280
+        if screenshot.width > max_width:
+            ratio = max_width / screenshot.width
+            new_size = (max_width, int(screenshot.height * ratio))
+            screenshot = screenshot.resize(new_size)
+
+        # Convert to base64 JPEG (smaller than PNG)
+        img_bytes = io.BytesIO()
+        screenshot.save(img_bytes, format="JPEG", quality=85)
+        img_bytes.seek(0)
+        image_b64 = base64.standard_b64encode(img_bytes.getvalue()).decode("utf-8")
+
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_b64}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }
+            ],
+            max_tokens=500,
+            temperature=0.5,
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except GroqError as e:
+        log.error("Groq vision error: %s", e)
+        if "rate_limit" in str(e).lower():
+            return "I've hit my vision rate limit, Sir. Try again in a moment."
+        return f"Vision system error, Sir: {str(e)[:120]}"
     except Exception as e:
-        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-            return "I've hit my vision quota limit for today, Sir. I'll be able to see your screen again tomorrow, or you can provide a new API key."
-        return f"Vision system error, Sir: {str(e)[:100]}"
+        log.exception("Vision error: %s", e)
+        return f"Vision system error, Sir: {str(e)[:120]}"

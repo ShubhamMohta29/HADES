@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>H.A.D.E.S</title>
+<style>
+  :root {
+    --bg: #020408;
+    --cyan: #00e5ff;
+    --cyan-dim: #0a4a5a;
+    --cyan-deep: #003a4a;
+    --text: #cfefff;
+    --text-dim: #4d7a88;
+    --user: #ffb64d;
+    --font-mono: "Courier New", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    user-select: none;
+  }
+
+  body {
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .titlebar {
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--cyan-dim);
+    padding: 4px 0;
+    border-bottom: 1px solid var(--cyan-deep);
+  }
+
+  .stage {
+    position: relative;
+    height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .stage::before {
+    content: "";
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(0, 170, 200, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 170, 200, 0.05) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: radial-gradient(circle at center, black 50%, transparent 85%);
+  }
+
+  .orb-wrap {
+    position: relative;
+    width: 220px;
+    height: 220px;
+    display: grid;
+    place-items: center;
+  }
+
+  .ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid var(--cyan-deep);
+    pointer-events: none;
+  }
+  .ring.r1 { width: 220px; height: 220px; animation: spin 18s linear infinite; border-style: dashed; }
+  .ring.r2 { width: 180px; height: 180px; animation: spin 10s linear infinite reverse; border-color: #005566; }
+  .ring.r3 { width: 260px; height: 80px;  animation: spin 14s linear infinite; border-color: #003a4a; }
+  .ring.r4 { width: 80px;  height: 260px; animation: spin 22s linear infinite reverse; border-color: #003a4a; }
+
+  .ticks {
+    position: absolute;
+    width: 220px; height: 220px;
+    animation: spin 40s linear infinite;
+  }
+  .tick {
+    position: absolute;
+    left: 50%; top: 0;
+    width: 2px; height: 8px;
+    background: var(--cyan-dim);
+    transform-origin: 1px 110px;
+  }
+
+  /* Core orb */
+  .orb {
+    position: relative;
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%,
+                  rgba(0, 229, 255, 0.9) 0%,
+                  rgba(0, 150, 200, 0.5) 35%,
+                  rgba(0, 50, 80, 0.3) 70%,
+                  transparent 100%);
+    box-shadow:
+      0 0 30px rgba(0, 229, 255, 0.5),
+      0 0 70px rgba(0, 229, 255, 0.25),
+      inset 0 0 30px rgba(255, 255, 255, 0.15);
+    animation: pulse 3.2s ease-in-out infinite;
+    transition: all 0.35s ease;
+  }
+
+  .orb::after {
+    content: "";
+    position: absolute; inset: -6px;
+    border-radius: 50%;
+    border: 1px solid rgba(0, 229, 255, 0.4);
+    animation: pulse-ring 3.2s ease-in-out infinite;
+  }
+
+  /* H.A.D.E.S text centered on the orb */
+  .orb-label {
+    position: absolute;
+    z-index: 20;
+    font-family: 'Courier New', monospace;
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 5px;
+    color: #ffffff;
+    text-shadow:
+      0 0 10px var(--cyan),
+      0 0 25px var(--cyan),
+      0 0 50px rgba(0, 229, 255, 0.4);
+    pointer-events: none;
+  }
+
+  .status {
+    position: absolute;
+    bottom: 14px; left: 0; right: 0;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--cyan);
+    text-shadow: 0 0 10px var(--cyan);
+  }
+  .status::before { content: "◉  "; }
+
+  body[data-status="standby"]  .orb { filter: hue-rotate(0deg); }
+  body[data-status="listening"] .orb {
+    animation: pulse 1.2s ease-in-out infinite;
+    box-shadow: 0 0 40px rgba(0, 229, 255, 0.85), 0 0 90px rgba(0, 229, 255, 0.4);
+  }
+  body[data-status="thinking"] .orb {
+    filter: hue-rotate(40deg);
+    animation: pulse 0.8s ease-in-out infinite;
+  }
+  body[data-status="speaking"] .orb {
+    filter: hue-rotate(-30deg) saturate(1.4);
+    animation: pulse 0.6s ease-in-out infinite;
+    box-shadow: 0 0 50px rgba(130, 220, 255, 0.9), 0 0 110px rgba(0, 229, 255, 0.5);
+  }
+
+  .chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 14px;
+    background: rgba(0, 20, 30, 0.3);
+    border: 1px solid var(--cyan-deep);
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.55;
+    scrollbar-width: thin;
+    scrollbar-color: var(--cyan-deep) transparent;
+  }
+  .chat::-webkit-scrollbar { width: 6px; }
+  .chat::-webkit-scrollbar-thumb { background: var(--cyan-deep); border-radius: 3px; }
+
+  .msg { margin-bottom: 8px; word-wrap: break-word; }
+  .msg .who { color: var(--cyan); font-weight: bold; }
+  .msg.you .who { color: var(--user); }
+  .msg.sys { color: var(--text-dim); font-style: italic; font-size: 12px; }
+  .msg .time { color: var(--text-dim); font-size: 10px; margin-right: 6px; }
+
+  .inputbar {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .inputbar input {
+    flex: 1;
+    background: rgba(0, 20, 30, 0.5);
+    border: 1px solid var(--cyan-deep);
+    border-radius: 4px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .inputbar input:focus {
+    border-color: var(--cyan);
+    box-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+  }
+  .inputbar button {
+    background: transparent;
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    padding: 0 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 2px;
+    font-size: 12px;
+    transition: all 0.2s;
+  }
+  .inputbar button:hover {
+    background: rgba(0, 229, 255, 0.1);
+    box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.06); }
+  }
+  @keyframes pulse-ring {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50%      { opacity: 0.8; transform: scale(1.15); }
+  }
+</style>
+</head>
+<body data-status="standby">
+
+  <div class="titlebar">[ HUMAN ASSISTANCE AND DECISION ENGINEERING SYSTEM  v3.0 ]</div>
+
+  <div class="stage">
+    <div class="orb-wrap">
+      <div class="ring r1"></div>
+      <div class="ring r2"></div>
+      <div class="ring r3"></div>
+      <div class="ring r4"></div>
+      <div class="ticks" id="ticks"></div>
+      <div class="orb"></div>
+      <div class="orb-label">H.A.D.E.S</div>
+    </div>
+    <div class="status" id="status">STANDBY</div>
+  </div>
+
+  <div class="chat" id="chat"></div>
+
+  <div class="inputbar">
+    <input id="input" type="text" placeholder="Type a command..." autocomplete="off" />
+    <button id="send">SEND</button>
+  </div>
+
+<script>
+  var ticksEl = document.getElementById("ticks");
+  for (var i = 0; i < 36; i++) {
+    var t = document.createElement("div");
+    t.className = "tick";
+    t.style.transform = "rotate(" + (i * 10) + "deg)";
+    if (i % 9 === 0) t.style.height = "12px";
+    ticksEl.appendChild(t);
+  }
+
+  var chatEl = document.getElementById("chat");
+  var inputEl = document.getElementById("input");
+  var sendBtn = document.getElementById("send");
+  var statusEl = document.getElementById("status");
+
+  function timeStamp() {
+    var d = new Date();
+    return d.toTimeString().slice(0, 5);
+  }
+
+  window.addMessage = function(who, text) {
+    var div = document.createElement("div");
+    var cls = who.toLowerCase() === "you" ? "you" : "hades";
+    div.className = "msg " + cls;
+    div.innerHTML = '<span class="time">' + timeStamp() + '</span><span class="who">' + who + ':</span> ' + escapeHtml(text);
+    chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  };
+
+  window.addSystemMessage = function(text) {
+    var div = document.createElement("div");
+    div.className = "msg sys";
+    div.textContent = "\u2014 " + text + " \u2014";
+    chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  };
+
+  window.setStatus = function(status) {
+    document.body.dataset.status = status;
+    statusEl.textContent = status.toUpperCase();
+  };
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"']/g, function(c) {
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  function sendText() {
+    var text = inputEl.value.trim();
+    if (!text) return;
+    inputEl.value = "";
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.send_message(text);
+    } else {
+      window.addMessage("You", text);
+    }
+  }
+
+  sendBtn.addEventListener("click", sendText);
+  inputEl.addEventListener("keydown", function(e) {
+    if (e.key === "Enter") sendText();
+  });
+
+  window.addEventListener("load", function() { inputEl.focus(); });
+</script>
+</body>
+</html>
