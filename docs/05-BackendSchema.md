@@ -23,6 +23,7 @@ Stores the full conversation as a JSON array of message objects.
 - Trimmed to `[system] + last 40 messages` (20 turns × 2) on every write
 - Thread-safe: guarded by `threading.Lock()`
 - Written to disk after every assistant reply via `save_memory()`
+- Currently local, want to make it stored on something like supabase or such to free up that storage from the system.
 
 ---
 
@@ -36,6 +37,7 @@ Append-only plain text file. One note per line.
 
 **Written by**: `commands.save_note(note)` — appends `[YYYY-MM-DD HH:MM] {note}\n`
 **Read by**: `commands.read_notes()` — returns full file content as a string
+maybe consider hosting it on smthng like supabase as well. should maybe consider some other backend websites.
 
 ---
 
@@ -118,7 +120,7 @@ Priority order (first match wins):
 
 ### Google STT
 - No API key — uses the `speech_recognition` library's free tier endpoint
-- Internet connection required; requests are unauthenticated
+- Internet connection required; requests are unauthenticated. Should authenticate them
 
 ### Face Auth (optional)
 - No external service — `face_recognition` runs locally via dlib
