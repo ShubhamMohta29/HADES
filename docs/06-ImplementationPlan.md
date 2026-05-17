@@ -38,7 +38,7 @@
 - [x] Implement `voice.py:listen()` — SpeechRecognition microphone capture, returns transcript or None
 - [x] Implement `voice.py:wait_for_wake_word()` — polling loop for "hades" with mishear tolerance
 - [x] Handle `OSError` (no mic), `UnknownValueError` (silence), `WaitTimeoutError` (timeout)
-- [x] Place Piper voice model in `voices/en_GB-alan-medium.onnx`
+- [ ] Place Piper voice model in `voices/en_GB-alan-medium.onnx` (download from huggingface.co/rhasspy/piper-voices — .onnx + .onnx.json, ~60 MB)
 
 **Done when**: Script says something and mic input is transcribed correctly.
 

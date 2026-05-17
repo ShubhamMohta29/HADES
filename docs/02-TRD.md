@@ -7,7 +7,7 @@
 - Python calls JS via `gui.evaluate_js()` for real-time status updates and chat messages
 
 ## Backend
-- **Python 3.10+** — single-process application
+- **Python 3.10+** — single-process application. May look into alternatives that are better.
 - `main.py` runs the voice loop on a daemon thread; GUI runs on the main thread
 - Module architecture: `brain`, `voice`, `commands`, `vision`, `weather`, `news`, `stocks`, `spotify`, `face_auth`, `config`, `gui`
 - Intent routing in `main.py:route()` — regex + keyword matching, falls back to Groq LLM
@@ -109,5 +109,5 @@ PIPER_MODEL             # absolute path to .onnx file (default: ./voices/en_GB-a
 - **Internet required** for: Groq API, Google STT, weather, news, stocks, Spotify
 - **Microphone required** for voice mode (text input fallback available in GUI)
 - Must stay on free tiers for all APIs
-- No database — flat files only (JSON history, TXT notes)
+- No database — flat files only (JSON history, TXT notes) [need to change it for better feel]
 - Single user, single machine

@@ -16,7 +16,7 @@ client = Groq(api_key=GROQ_API_KEY)
 
 # Model & memory settings
 MODEL = "llama-3.3-70b-versatile"   # upgraded from llama-3.1-8b-instant
-MAX_TOKENS = 400
+MAX_TOKENS = 1024
 MAX_HISTORY_TURNS = 20              # keep system prompt + last N user/assistant pairs
 
 HISTORY_FILE = Path(__file__).parent / "conversation_history.json"
