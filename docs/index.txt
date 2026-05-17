@@ -1,0 +1,144 @@
+================================================================================
+HADES — Human Assistance and Decision Engineering System
+Project Index & Status
+Last updated: 2026-05-17
+================================================================================
+
+OVERVIEW
+--------
+HADES is a voice-first AI personal assistant for Windows. It runs as a local
+Python desktop app (pywebview GUI), uses Groq LLaMA 70B for conversation, Piper
+TTS for offline speech output, and Google STT for voice input. The UI is a
+sci-fi dark-themed animated orb interface.
+
+--------------------------------------------------------------------------------
+WHAT HAS BEEN BUILT (complete)
+--------------------------------------------------------------------------------
+
+[CORE]
+  - brain.py          Groq Llama 3.3 70B conversational AI with persistent
+                      conversation history (JSON), trimmed to 20 turns, thread-safe
+  - voice.py          Piper TTS (offline neural, British male voice) + fallback to
+                      CLI/print; Google STT via SpeechRecognition; wake word loop
+  - main.py           Full voice loop (standby → wake → listen → think → speak),
+                      intent router with priority chain, text command handler
+  - config.py         .env loader for all API keys and settings flags
+  - gui.py            pywebview window, Python↔JS bridge, status/message helpers
+
+[FRONTEND]
+  - frontend/index.html   Single-page dark sci-fi UI — animated orb with 4 rotating
+                          rings + tick marks, 4-state status system (standby /
+                          listening / thinking / speaking), scrollable chat log,
+                          text input bar
+
+[COMMANDS]
+  - commands.py       Volume (set/up/down/mute via pycaw + pyautogui), time & date,
+                      battery, screenshot, clipboard read, shutdown/restart/lock,
+                      notes (save + read), timed reminders, web search, app
+                      launcher (Chrome/VS Code/Notepad/Calculator/Explorer/Word/Excel),
+                      website opener (YouTube/GitHub/Gmail/Reddit/Twitter/Instagram/
+                      Netflix/LinkedIn), CPU/RAM/disk usage
+
+[INTEGRATIONS]
+  - weather.py        OpenWeatherMap — current weather by city
+  - news.py           NewsAPI — top headlines or topic-specific news (5 results)
+  - stocks.py         yfinance — live stock price; CoinGecko — crypto price
+                      (BTC/ETH/SOL/DOGE/ADA/XRP)
+  - spotify.py        Spotipy — play by query, pause/resume, skip, previous,
+                      shuffle, current track query
+  - vision.py         Screen capture (PIL.ImageGrab) → Groq Llama 4 Scout
+                      (multimodal) — analyzes screen on voice trigger
+
+[AUTH]
+  - face_auth.py      Optional face verification gate (OpenCV + face_recognition)
+                      enabled via FACE_AUTH_ENABLED=true in .env
+
+[DOCS]
+  - docs/01-PRD.md              Product Requirements Document
+  - docs/02-TRD.md              Technical Requirements Document
+  - docs/03-AppFlow.md          Navigation & User Journey Map
+  - docs/04-UIUXDesignBrief.md  Visual & Interaction Design Guide
+  - docs/05-BackendSchema.md    Data Model & Architecture
+  - docs/06-ImplementationPlan.md  Step-by-Step Build Sequence
+  - docs/index.txt              This file
+  - docs/session_log.txt        Per-session changelog
+
+--------------------------------------------------------------------------------
+WHAT STILL NEEDS TO BE BUILT
+--------------------------------------------------------------------------------
+
+[RELIABILITY]
+  - Text-only mode fallback when no microphone is detected at startup
+    (currently logs OSError and silently retries — should warn user in GUI)
+  - Debounce rapid double-wake-word triggers to prevent double-responses
+  - Trim Spotify error messages to be voice-friendly (currently raw API errors
+    can be spoken aloud verbatim)
+
+[UX / COMMANDS]
+  - "help" command — spoken list of all available commands
+  - Configurable wake words via .env (e.g. WAKE_WORDS=hades,jarvis)
+  - Note categories / tags ("make a note under work: ...")
+  - "delete my last note" command
+
+[TESTING]
+  - Unit tests for main.py:route() intent routing (no voice/API calls needed)
+  - Smoke test script to verify all API keys are valid before first run
+
+[DISTRIBUTION]
+  - Auto-download Piper voice model on first run if voices/ directory is empty
+  - One-command Windows install script (install.bat)
+  - Bundled .exe via PyInstaller for distribution without Python installed
+
+[FUTURE / NICE-TO-HAVE]
+  - Calendar integration (Google Calendar read/create)
+  - Email reading (Gmail API)
+  - Smart home control (Philips Hue, etc.)
+  - Multi-language voice support
+  - Offline STT (replace Google STT with local Whisper)
+  - Custom wake word training (replace "HADES" keyword with Porcupine)
+  - Hotkey trigger (no-wake-word activation shortcut)
+  - Plugin system for user-added skill modules
+
+--------------------------------------------------------------------------------
+FILE MAP
+--------------------------------------------------------------------------------
+
+Jarvis/
+  main.py                       Entry point, voice loop, intent router
+  brain.py                      Groq LLM + conversation memory
+  voice.py                      Piper TTS + SpeechRecognition STT
+  vision.py                     Screen capture + Groq multimodal vision
+  commands.py                   PC control commands
+  weather.py                    OpenWeatherMap integration
+  news.py                       NewsAPI integration
+  stocks.py                     Stock + crypto price lookups
+  spotify.py                    Spotify playback control
+  face_auth.py                  Optional face auth gate
+  gui.py                        pywebview window + JS bridge
+  config.py                     .env loader
+  requirements.txt              All Python dependencies
+  .env                          API keys (not committed)
+  frontend/
+    index.html                  Full sci-fi UI (HTML/CSS/JS)
+  voices/
+    en_GB-alan-medium.onnx      Piper TTS voice model (not committed)
+    en_GB-alan-medium.onnx.json Piper voice config (not committed)
+  docs/
+    01-PRD.md
+    02-TRD.md
+    03-AppFlow.md
+    04-UIUXDesignBrief.md
+    05-BackendSchema.md
+    06-ImplementationPlan.md
+    index.txt                   This file
+    session_log.txt             Per-session changelog
+  conversation_history.json     Auto-generated; not committed
+  notes.txt                     Auto-generated; not committed
+
+--------------------------------------------------------------------------------
+KNOWN ISSUES / BUGS
+--------------------------------------------------------------------------------
+
+  - None currently documented. File bugs here as discovered.
+
+================================================================================

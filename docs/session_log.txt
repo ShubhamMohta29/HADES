@@ -1,0 +1,78 @@
+================================================================================
+HADES — Session Log
+One entry per working session. Newest at the top.
+================================================================================
+
+Format:
+  DATE        YYYY-MM-DD
+  WHAT        Summary of what was done this session
+  FILES       Files created or modified
+  NEXT        What to pick up next session
+
+--------------------------------------------------------------------------------
+SESSION 003 — 2026-05-17
+--------------------------------------------------------------------------------
+WHAT
+  Created full project documentation suite (6 planning documents + index/log).
+  Audited entire codebase to derive accurate specs rather than using templates.
+
+FILES CREATED
+  docs/01-PRD.md              Product Requirements Document
+  docs/02-TRD.md              Technical Requirements Document
+  docs/03-AppFlow.md          App Flow & User Journey Map
+  docs/04-UIUXDesignBrief.md  UI/UX Design Brief
+  docs/05-BackendSchema.md    Backend Schema & Architecture
+  docs/06-ImplementationPlan.md  Implementation Plan (phased, with checkboxes)
+  docs/index.txt              Project status index (built vs. to-build)
+  docs/session_log.txt        This file
+
+NEXT
+  - Add "help" command to commands.py listing all available commands
+  - Write unit tests for main.py:route() routing logic
+  - Add mic-unavailable warning in GUI (text-only mode fallback)
+
+--------------------------------------------------------------------------------
+SESSION 002 — (date unknown — from git history, commit a6f64b6)
+--------------------------------------------------------------------------------
+WHAT
+  Fixed formatting in SYSTEM_PROMPT text in brain.py.
+
+FILES MODIFIED
+  brain.py
+
+NEXT
+  Documentation (done in Session 003)
+
+--------------------------------------------------------------------------------
+SESSION 001 — (date unknown — from git history, commit 6dda888 / PR #1 Jaggi branch)
+--------------------------------------------------------------------------------
+WHAT
+  Major overhaul of the project:
+  - Swapped screen reader from Gemini to Groq (vision.py now uses Llama 4 Scout)
+  - Replaced old Tkinter/desktop GUI with pywebview + HTML frontend
+  - Replaced old TTS engine with Piper TTS (offline neural, British voice)
+  - Updated requirements from requirements.txt
+  - Updated README.md with new setup instructions
+  - Updated .gitignore to exclude venv, .env, voice models, cache files
+
+FILES MODIFIED / CREATED
+  vision.py           Rewritten for Groq multimodal
+  gui.py              Rewritten for pywebview
+  frontend/index.html New sci-fi animated orb UI
+  voice.py            Rewritten for Piper TTS
+  requirements.txt    Updated full dependency list
+  README.md           Updated
+  .gitignore          Updated
+
+NEXT
+  SYSTEM_PROMPT formatting fix (done in Session 002)
+
+================================================================================
+HOW TO UPDATE THIS LOG
+================================================================================
+
+At the end of each session, add a new entry at the TOP (below the header),
+using the format above. Increment the session number. Keep entries factual —
+what changed, which files, what to do next.
+
+================================================================================
