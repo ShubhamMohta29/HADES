@@ -217,3 +217,20 @@ def wait_for_wake_word():
         except Exception as e:
             log.debug("wake-word loop: %s", e)
             continue
+
+
+def listen_for_wake_word_once(timeout: int = 3) -> bool:
+    """Open mic briefly and return True if the wake word is heard."""
+    try:
+        with sr.Microphone() as source:
+            recognizer.adjust_for_ambient_noise(source, duration=0.2)
+            audio = recognizer.listen(source, timeout=timeout, phrase_time_limit=3)
+        text = recognizer.recognize_google(audio).lower()
+        return any(w in text for w in WAKE_WORDS)
+    except (sr.WaitTimeoutError, sr.UnknownValueError):
+        return False
+    except KeyboardInterrupt:
+        raise
+    except Exception as e:
+        log.debug("sleep wake-word check: %s", e)
+        return False

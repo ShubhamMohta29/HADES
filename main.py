@@ -116,6 +116,13 @@ def route(text, gui):
     return think(text)
 
 
+# Words that trigger sleep mode. Include STT spacing variants.
+SLEEP_WORDS = (
+    "sleep", "goodbye", "good bye", "goodnight", "good night",
+    "that's all", "stand by", "standby", "go to sleep",
+)
+
+
 # ── Main voice loop ─────────────────────────────────────────────────────────
 def hades_loop(gui):
     if FACE_AUTH_ENABLED:
@@ -132,15 +139,30 @@ def hades_loop(gui):
     speak("Hades online. All systems nominal. Say my name to activate.")
     gui.add_system_message("All systems nominal. Waiting for activation.")
 
+    _sleeping = False  # distinguishes user-triggered sleep from initial standby
+
     while True:
         try:
-            gui.set_status("standby")
-            wait_for_wake_word()
+            # Set the correct idle status BEFORE blocking on the wake word.
+            # This ensures the GUI reflects the state while the mic is listening.
+            if _sleeping:
+                gui.set_status("sleeping")
+            else:
+                gui.set_status("standby")
 
-            gui.set_status("listening")
-            time.sleep(0.3)
-            speak("Yes, Sir?")
-            gui.add_message("Hades", "Yes, Sir?")
+            wait_for_wake_word()  # mic stays open; ignores everything except "HADES"
+
+            if _sleeping:
+                _sleeping = False
+                gui.set_status("listening")
+                time.sleep(0.3)
+                speak("I'm back, Sir. What do you need?")
+                gui.add_message("Hades", "I'm back, Sir. What do you need?")
+            else:
+                gui.set_status("listening")
+                time.sleep(0.3)
+                speak("Yes, Sir?")
+                gui.add_message("Hades", "Yes, Sir?")
 
             while True:
                 gui.set_status("listening")
@@ -151,11 +173,11 @@ def hades_loop(gui):
                 gui.add_message("You", user_input)
                 t = user_input.lower()
 
-                if any(w in t for w in ("sleep", "goodbye", "that's all", "stand by")):
-                    response = "Standing by, Sir. Call me when you need me."
+                if any(w in t for w in SLEEP_WORDS):
+                    response = "Going to sleep, Sir. Call me when you need me."
                     speak(response)
                     gui.add_message("Hades", response)
-                    gui.set_status("standby")
+                    _sleeping = True
                     break
 
                 gui.set_status("thinking")
@@ -168,7 +190,7 @@ def hades_loop(gui):
             return
         except Exception as e:
             log.exception("Error in main loop: %s", e)
-            # Don't crash — loop back to standby
+            _sleeping = False  # reset on unexpected error so standby shows next
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────

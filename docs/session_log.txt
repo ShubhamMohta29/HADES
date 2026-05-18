@@ -10,6 +10,37 @@ Format:
   NEXT        What to pick up next session
 
 --------------------------------------------------------------------------------
+SESSION 004 — 2026-05-18
+--------------------------------------------------------------------------------
+WHAT
+  Implemented true sleep/standby mode. Previously, saying "sleep" or "goodbye"
+  broke out of the inner command loop but the app continued processing arbitrary
+  speech via wait_for_wake_word() without any GUI feedback. Fixed:
+  - Sleep now shows a distinct SLEEPING orb state (near-dark, 15% brightness,
+    rings faded, very slow pulse) so the user can see the app is dormant
+  - Mic stays active but only the HADES wake word is processed; all other speech
+    is silently discarded by wait_for_wake_word()
+  - Wake from sleep greets with "I'm back, Sir" instead of "Yes, Sir?"
+  - SLEEP_WORDS expanded to include STT spacing variants ("good bye", "good night",
+    "standby", "goodnight", "go to sleep")
+  - Added listen_for_wake_word_once() helper to voice.py for future use
+
+FILES MODIFIED
+  main.py             Restructured hades_loop: _sleeping flag controls orb state
+                      before wait_for_wake_word(); removed old wait_while_sleeping()
+  voice.py            Added listen_for_wake_word_once() helper
+  frontend/index.html Added body[data-status="sleeping"] CSS (dim orb + faded rings)
+  docs/03-AppFlow.md  Updated orb states table, sleep flow, user journey step 11
+  docs/04-UIUXDesignBrief.md  Added sleeping state to orb state animations
+  docs/index.txt      Updated status system count (4→5 states), component descriptions
+  README.md           Added sleep mode feature row, expanded sleep commands, fixed LLM name
+
+NEXT
+  - Add "help" command to commands.py listing all available commands
+  - Write unit tests for main.py:route() routing logic
+  - Add mic-unavailable warning in GUI (text-only mode fallback)
+
+--------------------------------------------------------------------------------
 SESSION 003 — 2026-05-17
 --------------------------------------------------------------------------------
 WHAT

@@ -49,7 +49,8 @@ The orb is the visual centrepiece and the status indicator:
 - Orb label "H.A.D.E.S" floats centered on the orb with cyan text-shadow glow
 
 **State animations** (driven by `body[data-status]` CSS selectors):
-- `standby`: default slow pulse (3.2s), normal glow
+- `standby`: default slow pulse (3.2s), normal glow — initial idle, waiting for first wake word
+- `sleeping`: `brightness(0.15) saturate(0.3)` near-black orb, rings + ticks at 10% opacity, very slow pulse (9s), status text nearly invisible — user-triggered sleep; mic still open for wake word only
 - `listening`: fast pulse (1.2s), bright oversized glow
 - `thinking`: `hue-rotate(40deg)` amber shift, rapid pulse (0.8s)
 - `speaking`: `hue-rotate(-30deg) saturate(1.4)` blue-white shift, fastest pulse (0.6s), largest glow

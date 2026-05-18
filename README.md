@@ -12,7 +12,8 @@ A fully voice-activated AI assistant inspired by Iron Man's JARVIS, built with P
 | Feature | Description |
 |---|---|
 | 🎙️ Wake Word | Say **"HADES"** to activate — no button needed |
-| 🧠 AI Conversation | Powered by Groq LLaMA 3.1 with persistent memory |
+| 😴 Sleep Mode | Say "sleep", "goodbye", etc. — mic stays on but only listens for wake word; orb dims |
+| 🧠 AI Conversation | Powered by Groq LLaMA 3.3 70B with persistent memory |
 | 🌤️ Weather | Real-time weather for any city |
 | 📰 News | Top headlines or topic-specific news |
 | 📈 Stocks & Crypto | Live prices via Yahoo Finance & CoinGecko |
@@ -69,7 +70,7 @@ python main.py
 | *"What's the weather in London"* | Weather |
 | *"Give me today's news"* | Top headlines |
 | *"What's Tesla's stock price"* | Stock price |
-| *"What's Bitcoin at"* | Crypto price | *In Progress*
+| *"What's Bitcoin at"* | Crypto price |
 | *"Play Blinding Lights"* | Spotify song search |
 | *"Play my liked songs"* | Spotify liked songs |
 | *"Set volume to 60%"* | Volume control |
@@ -82,14 +83,14 @@ python main.py
 | *"What's my battery"* | Battery status |
 | *"Shutdown in 30 minutes"* | Schedule shutdown |
 | *"Clear memory"* | Reset conversation |
-| *"Goodbye"* | Go back to sleep |
+| *"Goodbye" / "Sleep" / "Goodnight" / "Stand by"* | Enter sleep mode — only wake word is heard |
 
 ---
 
 
 ## 🛠️ Tech Stack
 
-- **LLM:** Groq (LLaMA 3.1 8B) — free, fast inference
+- **LLM:** Groq (LLaMA 3.3 70B Versatile) — free, fast inference
 - **Speech:** SpeechRecognition + Google STT
 - **TTS:** PiperTTS (offline)
 - **Vision:** Groq (LLaMA 3.1 8B)

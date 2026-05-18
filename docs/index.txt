@@ -1,7 +1,7 @@
 ================================================================================
 HADES — Human Assistance and Decision Engineering System
 Project Index & Status
-Last updated: 2026-05-17
+Last updated: 2026-05-18
 ================================================================================
 
 OVERVIEW
@@ -19,17 +19,20 @@ WHAT HAS BEEN BUILT (complete)
   - brain.py          Groq Llama 3.3 70B conversational AI with persistent
                       conversation history (JSON), trimmed to 20 turns, thread-safe
   - voice.py          Piper TTS (offline neural, British male voice) + fallback to
-                      CLI/print; Google STT via SpeechRecognition; wake word loop
+                      CLI/print; Google STT via SpeechRecognition; wake word loop;
+                      listen_for_wake_word_once() helper for sparse checks
   - main.py           Full voice loop (standby → wake → listen → think → speak),
+                      true sleep mode (sleeping state: mic on but only wake word
+                      processed; all other speech discarded; orb dims to near-black),
                       intent router with priority chain, text command handler
   - config.py         .env loader for all API keys and settings flags
   - gui.py            pywebview window, Python↔JS bridge, status/message helpers
 
 [FRONTEND]
   - frontend/index.html   Single-page dark sci-fi UI — animated orb with 4 rotating
-                          rings + tick marks, 4-state status system (standby /
-                          listening / thinking / speaking), scrollable chat log,
-                          text input bar
+                          rings + tick marks, 5-state status system (standby /
+                          sleeping / listening / thinking / speaking), scrollable
+                          chat log, text input bar
 
 [COMMANDS]
   - commands.py       Volume (set/up/down/mute via pycaw + pyautogui), time & date,
@@ -96,7 +99,7 @@ WHAT STILL NEEDS TO BE BUILT
   - Multi-language voice support
   - Offline STT (replace Google STT with local Whisper)
   - Custom wake word training (replace "HADES" keyword with Porcupine)
-  - Hotkey trigger (no-wake-word activation shortcut)
+  - Hotkey trigger as alternative to voice wake (for silent environments)
   - Plugin system for user-added skill modules
 
 --------------------------------------------------------------------------------

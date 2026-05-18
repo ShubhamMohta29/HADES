@@ -51,7 +51,7 @@ If `FACE_AUTH_ENABLED=true`: face verification runs first. Pass → normal boot.
 8. Orb shifts to **SPEAKING** state → Piper TTS plays response
 9. Reply appears in chat as "HADES: ..."
 10. Loop returns to **LISTENING** (user can continue without re-saying "HADES")
-11. User says "sleep" / "goodbye" / "stand by" → HADES says "Standing by, Sir" → returns to **STANDBY**
+11. User says "sleep" / "goodbye" / "goodnight" / "stand by" / "that's all" → HADES says "Going to sleep, Sir" → orb enters **SLEEPING** state → mic remains open but only the wake word is processed; all other speech is discarded → user says "HADES" → HADES responds "I'm back, Sir" → resumes command mode
 
 ---
 
@@ -84,8 +84,9 @@ If `FACE_AUTH_ENABLED=true`: face verification runs first. Pass → normal boot.
 
 | State | Visual | Trigger |
 |---|---|---|
-| standby | Slow pulse, default cyan glow | App idle, waiting for wake word |
-| listening | Fast pulse (1.2s), bright glow | Wake word detected, mic active |
+| standby | Slow pulse, default cyan glow | App idle at startup, waiting for wake word |
+| sleeping | Near-dark orb (15% brightness), rings/ticks faded to 10% opacity, very slow pulse (9s) | User triggered sleep; mic active but only wake word is processed |
+| listening | Fast pulse (1.2s), bright glow | Wake word detected, mic active for commands |
 | thinking | Amber hue-shift, rapid pulse (0.8s) | Processing input (routing/LLM) |
 | speaking | Blue-white tint, fastest pulse (0.6s) | Piper TTS playing |
 
@@ -94,10 +95,12 @@ State is set via `gui.set_status(state)` which calls JS `setStatus(state)` which
 ---
 
 ## Sleep / Deactivation Flow
-- Triggers: "sleep", "goodbye", "that's all", "stand by"
-- HADES speaks response → voice loop breaks inner while-loop → returns to outer standby loop
-- Orb returns to standby state
-- Wake word detection resumes
+- Triggers: "sleep", "goodbye", "good bye", "goodnight", "good night", "that's all", "stand by", "standby", "go to sleep"
+- HADES speaks "Going to sleep, Sir. Call me when you need me."
+- Voice loop breaks inner command loop → outer loop sets `_sleeping = True`
+- Orb enters **sleeping** state (near-dark, slow pulse)
+- `wait_for_wake_word()` runs: mic stays open, captures audio, sends to Google STT — but only the HADES wake word triggers activation; all other speech is silently discarded
+- User says "HADES" → HADES responds "I'm back, Sir. What do you need?" → `_sleeping` reset → command mode resumes
 
 ---
 
