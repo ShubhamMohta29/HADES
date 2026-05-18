@@ -10,6 +10,101 @@ Format:
   NEXT        What to pick up next session
 
 --------------------------------------------------------------------------------
+SESSION 005 — 2026-05-18
+--------------------------------------------------------------------------------
+WHAT
+  Implemented all Phase 11 polish & hardening items. 24/24 unit tests pass.
+  Also caught and fixed a latent bug in stock routing during test writing.
+
+  SPOTIFY ERROR SUMMARIZATION
+  - spotify.py now maps HTTP status codes (401/403/404/429/503) to clean 1–2
+    sentence spoken responses. Raw SpotifyException goes to log only.
+
+  CONFIGURABLE WAKE WORDS + FUZZY TOLERANCE
+  - Added WAKE_WORDS and WAKE_DEBOUNCE env vars to config.py and .env.example
+  - voice.py: _KNOWN_FUZZY dict holds STT-mishear variants for hades/jarvis/friday;
+    generic fallback rules cover unknown words. _build_wake_set() constructs a
+    frozenset at startup from the env var.
+
+  WAKE WORD DEBOUNCE
+  - voice.py: _last_wake_time tracks last fire time; triggers within WAKE_DEBOUNCE
+    seconds (default 2.5) are silently ignored. Applied in both wait_for_wake_word()
+    and listen_for_wake_word_once(). Prevents echo / STT double-fire.
+
+  MIC UNAVAILABLE — TEXT-ONLY FALLBACK (Option B: per-call detection)
+  - voice.py: listen() now returns MIC_ERROR sentinel (distinct class) on OSError
+    instead of None. None still means silence/timeout.
+  - main.py inner voice loop: counts consecutive MIC_ERROR returns; after 3 shows
+    GUI warning "Microphone unavailable — use the text input, Sir."; resets and
+    shows "Microphone reconnected." when a non-error listen() returns.
+
+  HELP COMMAND + HELP CARD UI
+  - commands.py: HELP_HTML constant — full styled command reference (6 sections,
+    all commands listed with amber command text and dim descriptions).
+  - frontend/index.html: .help-card CSS component (cyan left border, dim tint,
+    section headers, two-column rows); window.addHelpCard() JS function.
+  - gui.py: add_help_card(html) bridge method.
+  - main.py route(): "help"/"commands"/exact phrases → add_help_card + short spoken
+    intro. Screen words checked first so "help me with homework" still hits vision.
+
+  CONVERSATIONAL NOTE-TAKING WITH CATEGORY SELECTION
+  - commands.py: save_note(note, category=None), get_existing_categories(),
+    read_notes(category=None) with filter; note-saving removed from handle_command.
+  - notes.txt format: [timestamp] [category?] text (category tag is optional).
+  - main.py: _pending_state dict + _start_note_flow() + _handle_pending_state().
+    Flow: detect note intent → extract content → LLM suggests category → ask user
+    → parse confirm/category name/new word → save. Sleep word clears pending state.
+
+  UNIT TESTS (tests/test_route.py)
+  - 24 tests covering all 12 routing branches; all heavy deps mocked via sys.modules
+    before import. Runs with `pytest tests/` — no API keys, mic, or Piper needed.
+  - Bug found and fixed: stock regex only handled "stock TSLA" order, not "TSLA
+    stock". Fixed with an OR'd regex in route(); test updated to use natural phrasing.
+
+  DOCS UPDATED
+  - All 6 .md docs and both .txt files updated to reflect Phase 11 state.
+
+FILES MODIFIED
+  spotify.py              _spotify_error_summary() + logging import
+  config.py               WAKE_WORDS_ENV, WAKE_DEBOUNCE constants
+  voice.py                Fuzzy wake word system, debounce, MIC_ERROR sentinel,
+                          import time, OSError handling in wake loop
+  commands.py             save_note/read_notes/get_existing_categories updated,
+                          HELP_HTML added, note-saving removed from handle_command
+  frontend/index.html     .help-card CSS + window.addHelpCard() JS
+  gui.py                  add_help_card() bridge method
+  main.py                 NOTE_TRIGGERS, _HELP_PHRASES, _pending_state machinery,
+                          route() rewritten with 12-step chain, hades_loop mic
+                          error streak tracking, import cleanup
+  .env.example            WAKE_WORDS and WAKE_DEBOUNCE entries added, defaults fixed
+  README.md               .env.template → .env.example, Gemini → Groq Llama 4 Scout,
+                          Piper download instructions, new voice commands in table
+  docs/02-TRD.md          New env vars, folder structure, pytest in libraries,
+                          mic now described as optional
+  docs/03-AppFlow.md      Help command flow, note conversational flow, mic state,
+                          Spotify error table expanded
+  docs/04-UIUXDesignBrief.md  Help card component spec added
+  docs/05-BackendSchema.md    Notes format, routing table (12 steps), multi-turn
+                              flow, GUI bridge addHelpCard
+  docs/06-ImplementationPlan.md  Phase 11 all checked; Done Criteria updated
+  docs/07-Supabase-Memory.md  Migration script updated for [category] tag
+  docs/index.txt          Full rebuild (see this file)
+  docs/session_log.txt    This entry
+
+FILES CREATED
+  tests/test_route.py     24 unit tests for route()
+
+NEXT
+  - Supabase + semantic memory (doc 07):
+      1. Create Supabase project; run SQL from §3 (pgvector, tables, RLS, function)
+      2. Add SUPABASE_URL + SUPABASE_ANON_KEY to .env
+      3. Write db.py
+      4. Add login UI to gui.py
+      5. Refactor brain.py for two-tier memory
+      6. Refactor commands.py notes to use db.py
+      7. Thread user_id through main.py
+
+--------------------------------------------------------------------------------
 SESSION 004 — 2026-05-18
 --------------------------------------------------------------------------------
 WHAT

@@ -20,3 +20,9 @@ FACE_AUTH_ENABLED = os.getenv("FACE_AUTH_ENABLED", "false").lower() == "true"
 
 # Piper TTS voice model path — set this in .env if you place the .onnx elsewhere
 PIPER_MODEL = os.getenv("PIPER_MODEL", "")  # empty = default ./voices/en_GB-alan-medium.onnx
+
+# Wake word settings
+# Comma-separated list of wake words (e.g. "hades,jarvis"). First is primary.
+WAKE_WORDS_ENV  = os.getenv("WAKE_WORDS", "hades")
+# Seconds to ignore a second wake-word trigger after the first (prevents echo double-fire)
+WAKE_DEBOUNCE   = float(os.getenv("WAKE_DEBOUNCE", "2.5"))

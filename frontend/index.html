@@ -232,6 +232,47 @@
     box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
   }
 
+  /* ── Help card ──────────────────────────────────────────────────────────── */
+  .help-card {
+    border: 1px solid var(--cyan-deep);
+    border-left: 3px solid var(--cyan);
+    border-radius: 4px;
+    padding: 10px 14px 12px;
+    margin: 4px 0 8px;
+    background: rgba(0, 229, 255, 0.03);
+    user-select: text;
+  }
+  .help-title {
+    color: var(--cyan);
+    font-size: 10px;
+    letter-spacing: 3px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--cyan-deep);
+    margin-bottom: 8px;
+  }
+  .help-cat {
+    color: var(--text-dim);
+    font-size: 9px;
+    letter-spacing: 3px;
+    margin: 10px 0 4px;
+  }
+  .help-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 3px 0;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+  .help-cmd {
+    color: var(--user);
+    min-width: 210px;
+    flex-shrink: 0;
+  }
+  .help-desc {
+    color: var(--text-dim);
+  }
+
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes pulse {
     0%, 100% { transform: scale(1); }
@@ -301,6 +342,14 @@
     div.className = "msg sys";
     div.textContent = "\u2014 " + text + " \u2014";
     chatEl.appendChild(div);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  };
+
+  window.addHelpCard = function(html) {
+    var wrapper = document.createElement("div");
+    wrapper.className = "msg";
+    wrapper.innerHTML = html;
+    chatEl.appendChild(wrapper);
     chatEl.scrollTop = chatEl.scrollHeight;
   };
 

@@ -77,10 +77,29 @@ Dark mode only. No light mode variant. The aesthetic depends entirely on dark ba
 | Chat log | Scrollable `div`, auto-scrolls to bottom on new message |
 | Message format | `[timestamp] WHO: message` — three-part structure |
 | System messages | Italic, dim, wrapped in em-dashes: `— message —` |
+| Help card | Distinct bordered panel inside the chat log (see below) |
 | Status indicator | Text label below orb + CSS class on `body` tag |
 | Input bar | Full-width text field + SEND button; Enter key submits |
 | Hover states | Buttons glow cyan on hover with `box-shadow` |
 | Disabled state | Not implemented — input stays active at all times |
+
+---
+
+## Help Card Component (`.help-card`)
+
+Triggered by saying or typing "help" / "commands". Rendered inside the chat log via `window.addHelpCard(html)`.
+
+**Visual design**:
+- Left border: 3px solid `var(--cyan)` — distinguishes it from regular messages at a glance
+- Background: `rgba(0, 229, 255, 0.03)` — near-invisible tint, consistent with the dark aesthetic
+- Section headers (`.help-cat`): 9px, letter-spacing 3px, dim color — same language as the titlebar
+- Command column (`.help-cmd`): amber `var(--user)` — matches the user-message color so it reads as "things you say"
+- Description column (`.help-desc`): dim text — supporting information, not primary
+- Min-width on `.help-cmd` (210px) keeps all descriptions left-aligned regardless of command length
+
+**Sections**: ACTIVATION · INFORMATION · SPOTIFY · PC CONTROL · UTILITIES · SCREEN VISION
+
+**User-selectable text**: `user-select: text` is set on `.help-card` only — the rest of the UI keeps `user-select: none`.
 
 ---
 

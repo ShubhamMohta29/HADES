@@ -136,17 +136,19 @@
 
 ---
 
-## Phase 11: Polish & Hardening (Remaining)
+## Phase 11: Polish & Hardening ✅
 **Goal**: Reliability, error coverage, and user experience refinements.
 
-- [ ] README with full setup instructions (API keys, Piper model download, venv setup)
-- [ ] Graceful handling when mic is unavailable at startup (print warning, continue in text-only mode)
-- [ ] Configurable wake words via `.env` (e.g. `WAKE_WORDS=hades,jarvis`)
-- [ ] Debounce rapid double-wake-word triggers
-- [ ] Trim Spotify error messages to be voice-friendly
-- [ ] Add "help" command that lists available commands spoken aloud
-- [ ] Persist notes with optional category tagging
-- [ ] Test suite for `route()` logic (unit tests, no voice/API calls needed)
+- [x] README with full setup instructions (API keys, Piper model download, venv setup)
+- [x] Graceful mic handling — `MIC_ERROR` sentinel in `listen()`; 3 consecutive failures show GUI warning and switch to text-only; reconnect is detected and announced
+- [x] Configurable wake words via `.env` (`WAKE_WORDS=hades,jarvis`); per-word fuzzy STT-mishear variant sets; generic fallback rules for unknown words
+- [x] Debounce rapid double-wake-word triggers (`WAKE_DEBOUNCE=2.5` seconds, configurable)
+- [x] Spotify errors summarized by HTTP status code into 1–2 spoken sentences; raw exception logged only
+- [x] `help` / `commands` voice or text command — GUI renders a dedicated styled help card; HADES speaks a short intro only
+- [x] Notes with optional category tagging — conversational flow: HADES asks which category, uses LLM to suggest the best fit, user confirms or names a different one; `read my [category] notes` filters by tag
+- [x] Test suite for `route()` logic — 24 unit tests in `tests/test_route.py`; all dependencies mocked; runs with `pytest tests/`
+
+**Bonus fix (caught by tests)**: Stock routing regex now handles both `"Tesla stock"` and `"stock Tesla"` word orders.
 
 ---
 
@@ -162,10 +164,10 @@
 
 ## Done Criteria (v1 Shipped)
 
-- [ ] All Phase 1–10 items checked off
+- [x] All Phase 1–10 items checked off
 - [ ] App starts cold in under 10 seconds
 - [ ] Wake word triggers reliably in a quiet room
 - [ ] All 8 command categories tested: AI chat, weather, news, stocks, crypto, Spotify, PC control, screen vision
 - [ ] No unhandled exceptions in a 30-minute voice session
-- [ ] `.env.example` documents every required key
-- [ ] `README.md` covers install, setup, and first-run steps
+- [x] `.env.example` documents every required key
+- [x] `README.md` covers install, setup, and first-run steps

@@ -19,28 +19,36 @@ WHAT HAS BEEN BUILT (complete)
   - brain.py          Groq Llama 3.3 70B conversational AI with persistent
                       conversation history (JSON), trimmed to 20 turns, thread-safe
   - voice.py          Piper TTS (offline neural, British male voice) + fallback to
-                      CLI/print; Google STT via SpeechRecognition; wake word loop;
-                      listen_for_wake_word_once() helper for sparse checks
+                      CLI/print; Google STT via SpeechRecognition; configurable wake
+                      words (WAKE_WORDS env var) with per-word fuzzy STT-mishear
+                      variant sets; 2.5s debounce (WAKE_DEBOUNCE env var);
+                      MIC_ERROR sentinel distinguishes mic failure from silence;
+                      listen_for_wake_word_once() helper for sleep-mode checks
   - main.py           Full voice loop (standby → wake → listen → think → speak),
-                      true sleep mode (sleeping state: mic on but only wake word
-                      processed; all other speech discarded; orb dims to near-black),
-                      intent router with priority chain, text command handler
-  - config.py         .env loader for all API keys and settings flags
-  - gui.py            pywebview window, Python↔JS bridge, status/message helpers
+                      true sleep mode (mic on but only wake word processed; orb dims),
+                      intent router (12-step priority chain), text command handler,
+                      _pending_state multi-turn state machine for conversational flows
+  - config.py         .env loader for all API keys and settings flags, including
+                      WAKE_WORDS and WAKE_DEBOUNCE
+  - gui.py            pywebview window, Python↔JS bridge, status/message helpers,
+                      add_help_card() for the command reference panel
 
 [FRONTEND]
   - frontend/index.html   Single-page dark sci-fi UI — animated orb with 4 rotating
                           rings + tick marks, 5-state status system (standby /
                           sleeping / listening / thinking / speaking), scrollable
-                          chat log, text input bar
+                          chat log, text input bar, help card component (.help-card)
+                          with its own CSS and window.addHelpCard() JS function
 
 [COMMANDS]
   - commands.py       Volume (set/up/down/mute via pycaw + pyautogui), time & date,
                       battery, screenshot, clipboard read, shutdown/restart/lock,
-                      notes (save + read), timed reminders, web search, app
-                      launcher (Chrome/VS Code/Notepad/Calculator/Explorer/Word/Excel),
-                      website opener (YouTube/GitHub/Gmail/Reddit/Twitter/Instagram/
-                      Netflix/LinkedIn), CPU/RAM/disk usage
+                      notes (save with optional category tag + read with category
+                      filter + get_existing_categories()), timed reminders, web
+                      search, app launcher (Chrome/VS Code/Notepad/Calculator/
+                      Explorer/Word/Excel), website opener (YouTube/GitHub/Gmail/
+                      Reddit/Twitter/Instagram/Netflix/LinkedIn), CPU/RAM/disk usage,
+                      HELP_HTML constant (full command reference card)
 
 [INTEGRATIONS]
   - weather.py        OpenWeatherMap — current weather by city
@@ -48,13 +56,19 @@ WHAT HAS BEEN BUILT (complete)
   - stocks.py         yfinance — live stock price; CoinGecko — crypto price
                       (BTC/ETH/SOL/DOGE/ADA/XRP)
   - spotify.py        Spotipy — play by query, pause/resume, skip, previous,
-                      shuffle, current track query
+                      shuffle, current track query; HTTP-status-aware error
+                      summarization (401/403/404/429/503 → clean spoken sentences)
   - vision.py         Screen capture (PIL.ImageGrab) → Groq Llama 4 Scout
                       (multimodal) — analyzes screen on voice trigger
 
 [AUTH]
   - face_auth.py      Optional face verification gate (OpenCV + face_recognition)
                       enabled via FACE_AUTH_ENABLED=true in .env
+
+[TESTS]
+  - tests/test_route.py   24 unit tests for main.py:route() — all 12 routing
+                          branches covered, all dependencies mocked; runs with
+                          `pytest tests/` (no API keys, mic, or Piper model needed)
 
 [DOCS]
   - docs/01-PRD.md              Product Requirements Document
@@ -63,6 +77,7 @@ WHAT HAS BEEN BUILT (complete)
   - docs/04-UIUXDesignBrief.md  Visual & Interaction Design Guide
   - docs/05-BackendSchema.md    Data Model & Architecture
   - docs/06-ImplementationPlan.md  Step-by-Step Build Sequence
+  - docs/07-Supabase-Memory.md  Supabase + semantic memory migration plan
   - docs/index.txt              This file
   - docs/session_log.txt        Per-session changelog
 
@@ -70,27 +85,27 @@ WHAT HAS BEEN BUILT (complete)
 WHAT STILL NEEDS TO BE BUILT
 --------------------------------------------------------------------------------
 
-[RELIABILITY]
-  - Text-only mode fallback when no microphone is detected at startup
-    (currently logs OSError and silently retries — should warn user in GUI)
-  - Debounce rapid double-wake-word triggers to prevent double-responses
-  - Trim Spotify error messages to be voice-friendly (currently raw API errors
-    can be spoken aloud verbatim)
+[MEMORY / BACKEND — Phase Supabase (doc 07)]
+  - Supabase project setup (pgvector, RLS, match_memory() SQL function)
+  - db.py — centralised Supabase client, embed(), save_message(), retrieve_relevant()
+  - Two-tier memory in brain.py — last 12 messages (recency) + top 5 semantically
+    relevant past turns (pgvector cosine search via sentence-transformers)
+  - User authentication — Supabase Auth sign-in flow in gui.py; session stored in
+    ~/.jarvis/session.json; user_id threaded through main.py router
+  - Migrate notes.txt → Supabase notes table (category column already aligned)
+  - Migrate conversation_history.json → conversation_memory table
 
 [UX / COMMANDS]
-  - "help" command — spoken list of all available commands
-  - Configurable wake words via .env (e.g. WAKE_WORDS=hades,jarvis)
-  - Note categories / tags ("make a note under work: ...")
-  - "delete my last note" command
+  - "delete my last note" / "delete my [category] notes" command
 
 [TESTING]
-  - Unit tests for main.py:route() intent routing (no voice/API calls needed)
   - Smoke test script to verify all API keys are valid before first run
 
-[DISTRIBUTION]
+[DISTRIBUTION — Phase 12]
   - Auto-download Piper voice model on first run if voices/ directory is empty
   - One-command Windows install script (install.bat)
   - Bundled .exe via PyInstaller for distribution without Python installed
+  - setup.py / pyproject.toml for pip-installable packaging
 
 [FUTURE / NICE-TO-HAVE]
   - Calendar integration (Google Calendar read/create)
@@ -98,7 +113,7 @@ WHAT STILL NEEDS TO BE BUILT
   - Smart home control (Philips Hue, etc.)
   - Multi-language voice support
   - Offline STT (replace Google STT with local Whisper)
-  - Custom wake word training (replace "HADES" keyword with Porcupine)
+  - Custom wake word training (replace keyword detection with Porcupine)
   - Hotkey trigger as alternative to voice wake (for silent environments)
   - Plugin system for user-added skill modules
 
@@ -107,25 +122,28 @@ FILE MAP
 --------------------------------------------------------------------------------
 
 Jarvis/
-  main.py                       Entry point, voice loop, intent router
+  main.py                       Entry point, voice loop, intent router, note state machine
   brain.py                      Groq LLM + conversation memory
-  voice.py                      Piper TTS + SpeechRecognition STT
+  voice.py                      Piper TTS + SpeechRecognition STT + wake word system
   vision.py                     Screen capture + Groq multimodal vision
-  commands.py                   PC control commands
+  commands.py                   PC control, categorised notes, HELP_HTML
   weather.py                    OpenWeatherMap integration
   news.py                       NewsAPI integration
   stocks.py                     Stock + crypto price lookups
-  spotify.py                    Spotify playback control
+  spotify.py                    Spotify playback control + error summarization
   face_auth.py                  Optional face auth gate
-  gui.py                        pywebview window + JS bridge
-  config.py                     .env loader
+  gui.py                        pywebview window + JS bridge (incl. add_help_card)
+  config.py                     .env loader (incl. WAKE_WORDS, WAKE_DEBOUNCE)
   requirements.txt              All Python dependencies
   .env                          API keys (not committed)
+  .env.example                  Template with all keys documented
   frontend/
-    index.html                  Full sci-fi UI (HTML/CSS/JS)
+    index.html                  Full sci-fi UI — orb, chat, help card component
   voices/
-    en_GB-alan-medium.onnx      Piper TTS voice model (not committed)
+    en_GB-alan-medium.onnx      Piper TTS voice model (not committed, ~60 MB)
     en_GB-alan-medium.onnx.json Piper voice config (not committed)
+  tests/
+    test_route.py               24 unit tests for route() (pytest)
   docs/
     01-PRD.md
     02-TRD.md
@@ -133,10 +151,11 @@ Jarvis/
     04-UIUXDesignBrief.md
     05-BackendSchema.md
     06-ImplementationPlan.md
+    07-Supabase-Memory.md
     index.txt                   This file
     session_log.txt             Per-session changelog
   conversation_history.json     Auto-generated; not committed
-  notes.txt                     Auto-generated; not committed
+  notes.txt                     Format: [timestamp] [category?] text; not committed
 
 --------------------------------------------------------------------------------
 KNOWN ISSUES / BUGS

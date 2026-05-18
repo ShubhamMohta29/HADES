@@ -1,4 +1,8 @@
-"""PC control commands: volume, apps, time, battery, reminders, notes, etc."""
+"""PC control commands: volume, apps, time, battery, reminders, notes, etc.
+
+Notes format on disk: [YYYY-MM-DD HH:MM] [category] note text
+Category is optional — omitted for uncategorised notes.
+"""
 
 import webbrowser
 import subprocess
@@ -75,18 +79,48 @@ def set_reminder(text, seconds):
 NOTES_FILE = os.path.join(os.path.dirname(__file__), "notes.txt")
 
 
-def save_note(note):
+def save_note(note: str, category: str = None):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    cat_str = f"[{category.lower()}] " if category else ""
     with open(NOTES_FILE, "a", encoding="utf-8") as f:
-        f.write(f"[{timestamp}] {note}\n")
+        f.write(f"[{timestamp}] {cat_str}{note}\n")
 
 
-def read_notes():
+def get_existing_categories() -> list:
+    """Return all unique category tags found in notes.txt, defaulting to ['personal', 'work']."""
+    if not os.path.exists(NOTES_FILE):
+        return ["personal", "work"]
+    cats = set()
+    with open(NOTES_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            # Category tag is letters-only in brackets, appearing after the timestamp
+            # e.g. "[2025-05-17 14:32] [work] ..."  → match [work]
+            m = re.search(r"\]\s*\[([a-zA-Z]+)\]", line)
+            if m:
+                cats.add(m.group(1).lower())
+    return sorted(cats) if cats else ["personal", "work"]
+
+
+def read_notes(category: str = None) -> str:
     if not os.path.exists(NOTES_FILE):
         return "No notes found, Sir."
     with open(NOTES_FILE, "r", encoding="utf-8") as f:
-        content = f.read().strip()
-    return content if content else "Your notes are empty, Sir."
+        lines = [l.rstrip() for l in f if l.strip()]
+    if not lines:
+        return "Your notes are empty, Sir."
+    if category:
+        tag = f"[{category.lower()}]"
+        filtered = [l for l in lines if tag in l.lower()]
+        if not filtered:
+            return f"No notes found under '{category}', Sir."
+        # Strip timestamp + category tag for clean spoken output
+        clean = []
+        for l in filtered:
+            l = re.sub(r"^\[[^\]]+\]\s*", "", l)   # remove timestamp
+            l = re.sub(r"^\[[^\]]+\]\s*", "", l)   # remove category tag
+            clean.append(l.strip())
+        return f"Your {category} notes: " + "; ".join(clean) + "."
+    return "\n".join(lines)
 
 
 # ── Main command handler ────────────────────────────────────────────────────
@@ -156,14 +190,11 @@ def handle_command(text):
         os.system("shutdown /a")
         return "Shutdown cancelled, Sir."
 
-    # ── Notes ───────────────────────────────────────────────────────────────
-    if "make a note" in t or "take a note" in t or "note that" in t:
-        note = re.sub(r".*(note that|make a note|take a note)[:\s]*", "", t).strip()
-        if note:
-            save_note(note)
-            return "Note saved, Sir."
-    if "read my notes" in t or "show my notes" in t:
-        return read_notes()
+    # ── Notes (read only — saving is handled conversationally in main.route()) ─
+    if "read my notes" in t or "show my notes" in t or "read notes" in t:
+        m = re.search(r"(?:about|under|for|in)\s+([a-zA-Z]+)", t)
+        category = m.group(1) if m else None
+        return read_notes(category)
 
     # ── Reminders ───────────────────────────────────────────────────────────
     # "remind me in 10 minutes to call mom"
@@ -211,3 +242,50 @@ def handle_command(text):
         return f"Disk usage is {disk.percent}%, with {round(disk.free / (1024**3), 1)}GB free, Sir."
 
     return None  # fall through to AI
+
+
+# ── Help card HTML ──────────────────────────────────────────────────────────
+# Rendered inside the chat panel via gui.add_help_card(). Styled by .help-card CSS.
+HELP_HTML = """<div class="help-card">
+  <div class="help-title">&#9670;&nbsp; COMMAND REFERENCE</div>
+
+  <div class="help-cat">ACTIVATION</div>
+  <div class="help-row"><span class="help-cmd">"HADES"</span><span class="help-desc">wake word</span></div>
+  <div class="help-row"><span class="help-cmd">"sleep" / "goodbye" / "stand by"</span><span class="help-desc">enter standby mode</span></div>
+  <div class="help-row"><span class="help-cmd">"clear memory"</span><span class="help-desc">reset AI conversation history</span></div>
+  <div class="help-row"><span class="help-cmd">"help" / "commands"</span><span class="help-desc">show this reference</span></div>
+
+  <div class="help-cat">INFORMATION</div>
+  <div class="help-row"><span class="help-cmd">"weather in [city]"</span><span class="help-desc">current conditions &amp; temp</span></div>
+  <div class="help-row"><span class="help-cmd">"news" / "news about [topic]"</span><span class="help-desc">top headlines</span></div>
+  <div class="help-row"><span class="help-cmd">"[ticker] stock"</span><span class="help-desc">live stock price</span></div>
+  <div class="help-row"><span class="help-cmd">"bitcoin" / "ethereum" / "solana"</span><span class="help-desc">crypto price</span></div>
+
+  <div class="help-cat">SPOTIFY</div>
+  <div class="help-row"><span class="help-cmd">"play [song / artist]"</span><span class="help-desc">search and play track</span></div>
+  <div class="help-row"><span class="help-cmd">"play my liked songs"</span><span class="help-desc">play liked songs</span></div>
+  <div class="help-row"><span class="help-cmd">"play [name] playlist"</span><span class="help-desc">play a specific playlist</span></div>
+  <div class="help-row"><span class="help-cmd">"pause" / "skip" / "previous"</span><span class="help-desc">playback control</span></div>
+  <div class="help-row"><span class="help-cmd">"what's playing"</span><span class="help-desc">current track info</span></div>
+  <div class="help-row"><span class="help-cmd">"shuffle"</span><span class="help-desc">toggle shuffle</span></div>
+
+  <div class="help-cat">PC CONTROL</div>
+  <div class="help-row"><span class="help-cmd">"set volume to [%]" / "mute"</span><span class="help-desc">audio control</span></div>
+  <div class="help-row"><span class="help-cmd">"open chrome" / "open vscode"</span><span class="help-desc">launch app</span></div>
+  <div class="help-row"><span class="help-cmd">"open youtube" / "open github"</span><span class="help-desc">open website</span></div>
+  <div class="help-row"><span class="help-cmd">"search for [query]"</span><span class="help-desc">Google search in browser</span></div>
+  <div class="help-row"><span class="help-cmd">"screenshot"</span><span class="help-desc">save to Desktop</span></div>
+  <div class="help-row"><span class="help-cmd">"battery" / "cpu" / "ram" / "disk"</span><span class="help-desc">system status</span></div>
+  <div class="help-row"><span class="help-cmd">"shutdown" / "restart" / "lock"</span><span class="help-desc">power control</span></div>
+  <div class="help-row"><span class="help-cmd">"clipboard"</span><span class="help-desc">read clipboard contents</span></div>
+
+  <div class="help-cat">UTILITIES</div>
+  <div class="help-row"><span class="help-cmd">"take a note: [text]"</span><span class="help-desc">save a note (asks category)</span></div>
+  <div class="help-row"><span class="help-cmd">"read my [category] notes"</span><span class="help-desc">view notes by category</span></div>
+  <div class="help-row"><span class="help-cmd">"remind me in [N] mins to [task]"</span><span class="help-desc">timed reminder</span></div>
+  <div class="help-row"><span class="help-cmd">"what time is it" / "what's today"</span><span class="help-desc">time &amp; date</span></div>
+
+  <div class="help-cat">SCREEN VISION</div>
+  <div class="help-row"><span class="help-cmd">"what's on my screen"</span><span class="help-desc">AI screen analysis</span></div>
+  <div class="help-row"><span class="help-cmd">"help me with my homework"</span><span class="help-desc">screen-aware assistance</span></div>
+</div>"""

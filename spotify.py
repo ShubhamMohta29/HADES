@@ -1,11 +1,13 @@
-"""
-Spotify control via spotipy.
+"""Spotify control via spotipy — playback, search, and error handling.
 Setup:
   1. pip install spotipy
   2. Go to https://developer.spotify.com/dashboard → create app
   3. Set redirect URI to http://localhost:8888/callback
   4. Add SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI to .env
 """
+import logging
+log = logging.getLogger("hades.spotify")
+
 try:
     import spotipy
     from spotipy.oauth2 import SpotifyOAuth
@@ -125,6 +127,26 @@ def spotify_command(text):
             return "Shuffle enabled, Sir."
 
     except spotipy.exceptions.SpotifyException as e:
-        return f"Spotify error: {e}. Make sure Spotify is open on a device, Sir."
+        return _spotify_error_summary(e)
 
     return None
+
+
+def _spotify_error_summary(e) -> str:
+    status = getattr(e, "http_status", None)
+    detail = str(getattr(e, "reason", "") or str(e)).lower()
+    log.error("Spotify API error (HTTP %s): %s", status, e)
+
+    if status == 401:
+        return "Spotify authentication has expired, Sir. Restart HADES to re-authenticate."
+    if status == 403 or "premium" in detail:
+        return "That action requires Spotify Premium, Sir."
+    if status == 404 or "not found" in detail:
+        return "Spotify couldn't find that resource, Sir. It may have been removed."
+    if status == 429:
+        return "Spotify's rate limit has been reached, Sir. Try again in a moment."
+    if status == 503 or "unavailable" in detail:
+        return "Spotify is temporarily unavailable, Sir. Try again shortly."
+    if "no active device" in detail or "device" in detail:
+        return "No active Spotify device found, Sir. Open Spotify on a device first."
+    return "Spotify encountered an error, Sir. Make sure it's open and you're logged in."

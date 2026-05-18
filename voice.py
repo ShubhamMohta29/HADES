@@ -7,8 +7,9 @@ import subprocess
 import shutil
 import tempfile
 import threading
+import time
 from pathlib import Path
-from config import PIPER_MODEL as _CONFIG_PIPER_MODEL
+from config import PIPER_MODEL as _CONFIG_PIPER_MODEL, WAKE_WORDS_ENV, WAKE_DEBOUNCE
 import speech_recognition as sr
 
 log = logging.getLogger("hades.voice")
@@ -165,11 +166,49 @@ recognizer.non_speaking_duration = 0.8
 recognizer.dynamic_energy_threshold = True
 recognizer.energy_threshold = 300
 
-WAKE_WORDS = ("hades", "ades", "hadez", "hades.")  # tolerate STT mishears
+# ── Wake word system ─────────────────────────────────────────────────────────
+# Known STT mishear variants per word. Google STT is consistent in its mistakes.
+_KNOWN_FUZZY: dict = {
+    "hades":  ("hades", "ades", "hadez", "hades.", "hey des", "hayes", "hades!"),
+    "jarvis": ("jarvis", "jarvis.", "jar vis", "jarvis!", "jar-vis"),
+    "friday": ("friday", "frida", "fri day", "friday."),
+    "alexa":  ("alexa", "alexia", "alexa."),
+}
+
+def _build_wake_set(raw: str) -> frozenset:
+    """Build the full set of accepted wake-word strings from the env var."""
+    words = [w.strip().lower() for w in raw.split(",") if w.strip()]
+    result: set = set()
+    for w in words:
+        if w in _KNOWN_FUZZY:
+            result.update(_KNOWN_FUZZY[w])
+        else:
+            # Generic rules for unknown words
+            result.add(w)
+            result.add(w + ".")
+            result.add(w + "!")
+            # Common mishear: drop trailing 's' (e.g. "hades" → "hade")
+            if w.endswith("s") and len(w) > 3:
+                result.add(w[:-1])
+    return frozenset(result)
+
+WAKE_WORDS: frozenset = _build_wake_set(WAKE_WORDS_ENV)
+
+# ── Debounce state ───────────────────────────────────────────────────────────
+_last_wake_time: float = 0.0
+
+# ── Mic error sentinel ───────────────────────────────────────────────────────
+class _MicUnavailable:
+    """Returned by listen() on OSError — distinct from None (silence/timeout)."""
+    __slots__ = ()
+    def __repr__(self):
+        return "MIC_ERROR"
+
+MIC_ERROR = _MicUnavailable()
 
 
 def listen(timeout: int = 10):
-    """Listen once; return transcript or None."""
+    """Listen once; return transcript string, None (silence/timeout), or MIC_ERROR (OSError)."""
     try:
         with sr.Microphone() as source:
             print("Listening...")
@@ -180,7 +219,7 @@ def listen(timeout: int = 10):
                 return None
     except OSError as e:
         log.error("Microphone error: %s", e)
-        return None
+        return MIC_ERROR
 
     try:
         text = recognizer.recognize_google(audio)
@@ -197,8 +236,10 @@ def listen(timeout: int = 10):
 
 
 def wait_for_wake_word():
-    """Block until user says 'HADES'."""
-    print("Waiting for wake word ('HADES')...")
+    """Block until user says the wake word (configurable via WAKE_WORDS env var)."""
+    global _last_wake_time
+    primary = WAKE_WORDS_ENV.split(",")[0].strip().upper()
+    print(f"Waiting for wake word ('{primary}')...")
     while True:
         try:
             with sr.Microphone() as source:
@@ -206,11 +247,20 @@ def wait_for_wake_word():
                 audio = recognizer.listen(source, timeout=5, phrase_time_limit=3)
             text = recognizer.recognize_google(audio).lower()
             if any(w in text for w in WAKE_WORDS):
+                now = time.time()
+                if now - _last_wake_time < WAKE_DEBOUNCE:
+                    log.debug("Wake word debounced (%.1fs since last)", now - _last_wake_time)
+                    continue
+                _last_wake_time = now
                 print("Wake word detected!")
                 return
         except sr.WaitTimeoutError:
             continue
         except sr.UnknownValueError:
+            continue
+        except OSError as e:
+            log.warning("Mic unavailable in wake-word loop: %s", e)
+            time.sleep(3)
             continue
         except KeyboardInterrupt:
             raise
@@ -221,13 +271,20 @@ def wait_for_wake_word():
 
 def listen_for_wake_word_once(timeout: int = 3) -> bool:
     """Open mic briefly and return True if the wake word is heard."""
+    global _last_wake_time
     try:
         with sr.Microphone() as source:
             recognizer.adjust_for_ambient_noise(source, duration=0.2)
             audio = recognizer.listen(source, timeout=timeout, phrase_time_limit=3)
         text = recognizer.recognize_google(audio).lower()
-        return any(w in text for w in WAKE_WORDS)
-    except (sr.WaitTimeoutError, sr.UnknownValueError):
+        if any(w in text for w in WAKE_WORDS):
+            now = time.time()
+            if now - _last_wake_time < WAKE_DEBOUNCE:
+                return False
+            _last_wake_time = now
+            return True
+        return False
+    except (sr.WaitTimeoutError, sr.UnknownValueError, OSError):
         return False
     except KeyboardInterrupt:
         raise

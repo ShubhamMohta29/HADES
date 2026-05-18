@@ -86,6 +86,10 @@ class HadesGUI:
     def set_status(self, status: str):
         self._js(f"window.setStatus({json.dumps(status)});")
 
+    def add_help_card(self, html: str):
+        """Render the help card HTML inside the chat panel."""
+        self._js(f"window.addHelpCard({json.dumps(html)});")
+
 
 class _RootShim:
     """Mimics the old `gui.root` Tk object — only mainloop() is used."""

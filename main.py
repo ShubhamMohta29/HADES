@@ -3,10 +3,10 @@
 import threading
 import re
 import logging
-import time;
-from voice import listen, speak, wait_for_wake_word
+import time
+from voice import listen, speak, wait_for_wake_word, MIC_ERROR
 from brain import think, clear_memory
-from commands import handle_command
+from commands import handle_command, save_note, get_existing_categories, HELP_HTML
 from gui import HadesGUI
 from config import FACE_AUTH_ENABLED, DEFAULT_CITY
 
@@ -62,56 +62,182 @@ CRYPTO_COINS = {
     "ripple": "ripple", "xrp": "ripple",
 }
 
+NOTE_TRIGGERS = (
+    "make a note", "take a note", "note that",
+    "add a note", "save a note", "add this note",
+)
+
+# Help phrases that should show the command card (exact strip match or regex).
+_HELP_PHRASES = frozenset({
+    "help", "help me", "commands", "command list",
+    "show commands", "list commands", "what can you do",
+    "what do you do", "what can i say",
+})
+
+# ── Pending multi-turn state ─────────────────────────────────────────────────
+# Used for conversational interactions that span two turns (e.g. note category).
+_pending_state: dict = {}
+
+
+def _suggest_category(note_content: str, categories: list) -> str:
+    """Quick LLM call to pick the most appropriate category for a note."""
+    try:
+        from brain import client as _groq, MODEL
+        prompt = (
+            f"Note: '{note_content}'\n"
+            f"Available categories: {', '.join(categories)}\n"
+            "Which single category fits best? Reply with only the category name."
+        )
+        resp = _groq.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=10,
+            temperature=0,
+        )
+        suggested = resp.choices[0].message.content.strip().lower()
+        for c in categories:
+            if c.lower() in suggested:
+                return c
+    except Exception as e:
+        log.debug("Category suggestion failed: %s", e)
+    return categories[0]
+
+
+def _start_note_flow(note_content: str) -> str:
+    """Store the note and ask the user which category to file it under."""
+    categories = get_existing_categories()
+    suggested = _suggest_category(note_content, categories)
+    _pending_state.update({
+        "action": "save_note",
+        "content": note_content,
+        "categories": categories,
+        "suggested_category": suggested,
+    })
+    cats_display = ", ".join(f"'{c}'" for c in categories)
+    return (
+        f"Which category should I file this under? "
+        f"You have: {cats_display}. I suggest '{suggested}', Sir."
+    )
+
+
+_AFFIRM = frozenset({
+    "yes", "yeah", "yep", "sure", "ok", "okay", "correct",
+    "right", "sounds good", "go ahead", "that", "perfect", "fine",
+})
+_STOP_WORDS = frozenset({
+    "the", "and", "for", "in", "my", "add", "it", "to",
+    "put", "under", "please", "file", "save", "note", "a",
+})
+
+
+def _handle_pending_state(t: str) -> str | None:
+    """
+    Handle the user's response to a pending multi-turn action.
+    Returns the response string, or None to fall through to normal routing.
+    """
+    if _pending_state.get("action") != "save_note":
+        _pending_state.clear()
+        return None
+
+    categories = _pending_state["categories"]
+    suggested  = _pending_state["suggested_category"]
+
+    # 1. User named a known category explicitly
+    chosen = next((c for c in categories if c.lower() in t), None)
+
+    # 2. Affirmative response → use suggested
+    if not chosen and any(w in t for w in _AFFIRM):
+        chosen = suggested
+
+    # 3. Single meaningful word → treat as a new category name
+    if not chosen:
+        words = [w for w in re.split(r"\W+", t) if len(w) > 2 and w not in _STOP_WORDS]
+        if len(words) == 1:
+            chosen = words[0]
+
+    if chosen:
+        note = _pending_state["content"]
+        _pending_state.clear()
+        save_note(note, chosen)
+        return f"Note saved under '{chosen}', Sir."
+
+    # User response was ambiguous — re-ask once
+    cats_str = "' or '".join(categories)
+    return f"Sorry, Sir — should I file it under '{cats_str}'? I still suggest '{suggested}'."
+
 
 def route(text, gui):
     t = text.lower()
 
-    # ── Memory reset ────────────────────────────────────────────────────────
+    # ── Pending multi-turn state (always checked first) ──────────────────────
+    if _pending_state:
+        result = _handle_pending_state(t)
+        if result is not None:
+            return result
+        _pending_state.clear()  # unrecognised response — abandon and route normally
+
+    # ── Memory reset ─────────────────────────────────────────────────────────
     if "clear memory" in t or "forget everything" in t:
         return clear_memory()
 
-    # ── Screen analysis (check BEFORE PC commands so "help me" doesn't collide)
+    # ── Screen analysis (before help — "help me with homework" must hit here) ─
     if any(w in t for w in SCREEN_WORDS):
         from vision import analyze_screen
         return analyze_screen(
             f"The user says: '{text}'. Please help them based on what's on screen."
         )
 
-    # ── Weather ─────────────────────────────────────────────────────────────
+    # ── Help command ──────────────────────────────────────────────────────────
+    if t.strip() in _HELP_PHRASES or re.search(r"^(show|list|what).*(command|capability)", t):
+        gui.add_help_card(HELP_HTML)
+        return "Here is a list of things I can help you with, Sir."
+
+    # ── Note taking (conversational — must come before handle_command) ────────
+    if any(trigger in t for trigger in NOTE_TRIGGERS):
+        note = re.sub(
+            r".*(note that|make a note|take a note|add a note|save a note|add this note)[:\s]*",
+            "", t,
+        ).strip()
+        if note:
+            return _start_note_flow(note)
+
+    # ── Weather ──────────────────────────────────────────────────────────────
     if "weather" in t:
         m = re.search(r"weather\s+(?:in|for|at)\s+([a-zA-Z\s]+)", t)
         city = m.group(1).strip() if m else DEFAULT_CITY
         return _weather(city)
 
-    # ── News ────────────────────────────────────────────────────────────────
+    # ── News ─────────────────────────────────────────────────────────────────
     if "news" in t or "headlines" in t:
         m = re.search(r"news\s+(?:about|on)\s+([a-zA-Z\s]+)", t)
         topic = m.group(1).strip() if m else None
         return _news(topic)
 
-    # ── Stocks ──────────────────────────────────────────────────────────────
+    # ── Stocks ───────────────────────────────────────────────────────────────
     if re.search(r"\bstock\b|\bshare price\b", t):
-        m = re.search(r"(?:stock|price of|how is)\s+([A-Za-z]{1,6})", t)
+        # Handle both "Tesla stock" and "stock Tesla" / "price of Tesla" orders
+        m = re.search(r"([A-Za-z]{1,6})\s+(?:stock|share)", t) or \
+            re.search(r"(?:stock|price of|how is)\s+([A-Za-z]{1,6})", t)
         if m:
             return _stock(m.group(1))
 
-    # ── Crypto ──────────────────────────────────────────────────────────────
+    # ── Crypto ───────────────────────────────────────────────────────────────
     for keyword, coin_id in CRYPTO_COINS.items():
         if re.search(rf"\b{re.escape(keyword)}\b", t):
             return _crypto(coin_id)
 
-    # ── Spotify (tighter triggers so it doesn't hijack "play Tesla stock") ──
+    # ── Spotify (tighter triggers so it doesn't hijack "play Tesla stock") ───
     if any(w in t for w in SPOTIFY_WORDS):
         result = _spotify(text)
         if result:
             return result
 
-    # ── PC commands (time, volume, apps, notes, etc.) ───────────────────────
+    # ── PC commands (time, volume, apps, notes read, etc.) ───────────────────
     result = handle_command(text)
     if result:
         return result
 
-    # ── Fallback to AI brain ────────────────────────────────────────────────
+    # ── Fallback to AI brain ──────────────────────────────────────────────────
     gui.set_status("thinking")
     return think(text)
 
@@ -164,9 +290,24 @@ def hades_loop(gui):
                 speak("Yes, Sir?")
                 gui.add_message("Hades", "Yes, Sir?")
 
+            _mic_err_streak = 0
             while True:
                 gui.set_status("listening")
                 user_input = listen()
+
+                if user_input is MIC_ERROR:
+                    _mic_err_streak += 1
+                    if _mic_err_streak == 3:
+                        gui.add_system_message(
+                            "Microphone unavailable — use the text input, Sir."
+                        )
+                    time.sleep(2)
+                    continue
+
+                if _mic_err_streak >= 3:
+                    gui.add_system_message("Microphone reconnected.")
+                _mic_err_streak = 0
+
                 if not user_input:
                     continue
 
@@ -174,6 +315,7 @@ def hades_loop(gui):
                 t = user_input.lower()
 
                 if any(w in t for w in SLEEP_WORDS):
+                    _pending_state.clear()  # abandon any in-progress action
                     response = "Going to sleep, Sir. Call me when you need me."
                     speak(response)
                     gui.add_message("Hades", response)

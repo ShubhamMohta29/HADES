@@ -19,7 +19,7 @@ A fully voice-activated AI assistant inspired by Iron Man's JARVIS, built with P
 | 📈 Stocks & Crypto | Live prices via Yahoo Finance & CoinGecko |
 | 🎵 Spotify | Play, pause, skip, search playlists & songs by voice |
 | 🖥️ PC Control | Volume, apps, shutdown, lock, screenshots, clipboard |
-| 👁️ Screen Vision | Ask HADES to look at your screen — powered by Gemini |
+| 👁️ Screen Vision | Ask HADES to look at your screen — powered by Groq Llama 4 Scout |
 | 📝 Notes & Reminders | Voice-driven notes and timed reminders |
 | 🪟 GUI | Animated holographic dark-themed interface |
 
@@ -41,7 +41,7 @@ pip install -r requirements.txt
 
 ### 3. Configure API keys
 ```bash
-cp .env.template .env
+cp .env.example .env
 ```
 
 Edit `.env` with your keys:
@@ -54,6 +54,10 @@ Edit `.env` with your keys:
 | `SPOTIFY_*` | [developer.spotify.com](https://developer.spotify.com/dashboard) | Free |
 
 > Set your default city: `DEFAULT_CITY`
+>
+> **Piper TTS model** — download `en_GB-alan-medium.onnx` + `en_GB-alan-medium.onnx.json` (~60 MB) from [HuggingFace rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_GB/alan/medium) and place both files in `./voices/`.
+>
+> Optional — `WAKE_WORDS=hades,jarvis` to add more wake words. `WAKE_DEBOUNCE=2.5` to tune echo protection.
 
 ### 4. Run
 ```bash
@@ -76,10 +80,11 @@ python main.py
 | *"Set volume to 60%"* | Volume control |
 | *"Open Chrome"* | Launch app |
 | *"Take a screenshot"* | Screenshot |
-| *"What's on my screen"* | Gemini screen analysis |
+| *"What's on my screen"* | Groq Llama 4 Scout screen analysis |
 | *"Remind me in 10 minutes to eat"* | Reminder |
-| *"Make a note: buy groceries"* | Save note |
-| *"Read my notes"* | Read notes back |
+| *"Take a note: buy groceries"* | Save note (HADES will ask which category) |
+| *"Read my notes"* / *"Read my work notes"* | Read all notes or by category |
+| *"help"* / *"commands"* | Show the full command reference card |
 | *"What's my battery"* | Battery status |
 | *"Shutdown in 30 minutes"* | Schedule shutdown |
 | *"Clear memory"* | Reset conversation |
@@ -93,7 +98,7 @@ python main.py
 - **LLM:** Groq (LLaMA 3.3 70B Versatile) — free, fast inference
 - **Speech:** SpeechRecognition + Google STT
 - **TTS:** PiperTTS (offline)
-- **Vision:** Groq (LLaMA 3.1 8B)
+- **Vision:** Groq (Llama 4 Scout 17B — multimodal)
 - **GUI:** PyWebview (animated holographic orb)
 - **PC Control:** pyautogui, psutil, pycaw
 - **APIs:** OpenWeatherMap, NewsAPI, Yahoo Finance, CoinGecko (all free)

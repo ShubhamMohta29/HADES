@@ -60,29 +60,32 @@
 | `Pillow` | Screenshot capture + resize |
 | `python-dotenv` | .env loading |
 | `numpy` | Audio buffer handling |
+| `pytest` | Unit test runner (`tests/`) |
 
 ## Folder Structure
 
 ```
 Jarvis/
-├── main.py               # entry point, voice loop, intent router
+├── main.py               # entry point, voice loop, intent router, note state machine
 ├── brain.py              # Groq LLM, conversation history
-├── voice.py              # Piper TTS, SpeechRecognition
+├── voice.py              # Piper TTS, SpeechRecognition, wake-word detection
 ├── vision.py             # screen capture + Groq multimodal
-├── commands.py           # PC control commands
+├── commands.py           # PC control, notes (with categories), HELP_HTML constant
 ├── weather.py            # OpenWeatherMap
 ├── news.py               # NewsAPI
 ├── stocks.py             # yfinance + CoinGecko
-├── spotify.py            # Spotipy playback control
+├── spotify.py            # Spotipy playback control + error summarization
 ├── face_auth.py          # optional face verification
-├── gui.py                # pywebview window + JS bridge
+├── gui.py                # pywebview window + JS bridge (add_help_card added)
 ├── config.py             # .env loader, constants
 ├── frontend/
-│   └── index.html        # single-page UI (HTML/CSS/JS)
+│   └── index.html        # single-page UI — orb, chat, help card component
 ├── voices/
 │   └── en_GB-alan-medium.onnx   # Piper voice model
+├── tests/
+│   └── test_route.py     # 24 unit tests for route() (pytest, all deps mocked)
 ├── conversation_history.json    # persistent memory (auto-generated)
-├── notes.txt                    # notes storage (auto-generated)
+├── notes.txt                    # notes storage: [timestamp] [category] text
 ├── requirements.txt
 ├── .env                         # secrets (not committed)
 └── docs/                        # planning documents
@@ -100,6 +103,8 @@ SPOTIFY_REDIRECT_URI    # OAuth callback (default: http://127.0.0.1:8888/callbac
 DEFAULT_CITY            # default city for weather (default: Toronto)
 FACE_AUTH_ENABLED       # "true" to enable face auth gate (default: false)
 PIPER_MODEL             # absolute path to .onnx file (default: ./voices/en_GB-alan-medium.onnx)
+WAKE_WORDS              # comma-separated wake words (default: hades); built-in fuzzy sets for hades/jarvis/friday
+WAKE_DEBOUNCE           # seconds to suppress re-trigger after wake word fires (default: 2.5)
 ```
 
 ## Constraints
@@ -107,7 +112,7 @@ PIPER_MODEL             # absolute path to .onnx file (default: ./voices/en_GB-a
 - **Windows only** (pycaw, winsound, rundll32 system calls; face_auth uses Windows camera)
 - **Python 3.10+** required (Groq SDK, type hints)
 - **Internet required** for: Groq API, Google STT, weather, news, stocks, Spotify
-- **Microphone required** for voice mode (text input fallback available in GUI)
+- **Microphone optional** — `MIC_ERROR` sentinel from `listen()` enables per-call detection; after 3 consecutive failures the GUI shows a text-only warning; reconnect is auto-detected
 - Must stay on free tiers for all APIs
-- No database — flat files only (JSON history, TXT notes) [need to change it for better feel]
+- No database — flat files only (JSON history, TXT notes) [Supabase migration planned — see doc 07]
 - Single user, single machine

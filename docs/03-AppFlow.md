@@ -104,6 +104,26 @@ State is set via `gui.set_status(state)` which calls JS `setStatus(state)` which
 
 ---
 
+## Help Command Flow
+- Trigger: "help", "commands", "what can you do", "show commands", "command list" (exact phrases only — "help me with X" falls through to screen/AI)
+- `gui.add_help_card(HELP_HTML)` renders a styled card in the chat panel with all command categories
+- HADES speaks: "Here is a list of things I can help you with, Sir." — does **not** read every command aloud
+- Available anytime by voice or text input
+
+---
+
+## Note-Taking Flow (Conversational)
+1. User says or types a note trigger: "take a note: finish the report"
+2. Router extracts the note content, calls `_start_note_flow(content)`
+3. LLM picks the best-fit category from the user's existing categories (defaults: `personal`, `work`)
+4. HADES speaks: "Which category should I file this under? You have: 'personal', 'work'. I suggest 'work', Sir."
+5. User replies with: a known category name / "yes" or "sure" (uses suggestion) / a new single word (creates new category)
+6. Note saved with `[category]` tag; HADES confirms: "Note saved under 'work', Sir."
+7. If the user says something ambiguous, HADES re-asks once
+8. Saying a sleep word while awaiting a category abandons the note and enters sleep
+
+---
+
 ## Memory Reset Flow
 - User says or types "clear memory" / "forget everything"
 - `brain.clear_memory()` called → `conversation_history.json` reset to system-prompt-only
@@ -113,7 +133,8 @@ State is set via `gui.set_status(state)` which calls JS `setStatus(state)` which
 
 ## Empty States
 - **No notes yet**: "Your notes are empty, Sir."
-- **No mic available**: `listen()` catches `OSError`, logs error, returns `None` — voice loop silently retries
+- **No notes in category**: "No notes found under 'work', Sir."
+- **No mic available**: `listen()` returns `MIC_ERROR` sentinel (not `None`). After 3 consecutive `MIC_ERROR` returns the voice loop shows "Microphone unavailable — use the text input, Sir." in the GUI. When the mic comes back the loop shows "Microphone reconnected." Text input continues to work throughout.
 - **No Piper model**: TTS logs error, falls back to print-only (no audio)
 - **API key missing**: Each module checks at import time and returns a human-readable error string
 
@@ -122,8 +143,13 @@ State is set via `gui.set_status(state)` which calls JS `setStatus(state)` which
 | Error | Response |
 |---|---|
 | Groq API error | "My connection to the language server is disrupted, Sir. Try again in a moment." |
-| Google STT failure | `listen()` returns None → loop continues listening |
+| Google STT failure | `listen()` returns `None` → loop continues listening |
+| Mic unavailable (OSError) | `listen()` returns `MIC_ERROR` sentinel → after 3 in a row, GUI shows text-only warning |
 | Wake word timeout | `WaitTimeoutError` caught → continue polling |
+| Wake word double-fire | Debounce (2.5 s default) silently ignores rapid re-trigger |
+| Spotify 401 | "Spotify authentication has expired, Sir. Restart HADES to re-authenticate." |
+| Spotify 403 / Premium | "That action requires Spotify Premium, Sir." |
+| Spotify 429 | "Spotify's rate limit has been reached, Sir. Try again in a moment." |
 | Spotify not connected | Spotipy OAuth triggers browser login on first use |
 | Vision rate limit | "I've hit my vision rate limit, Sir. Try again in a moment." |
 | App/path not found | "Could not find {app} at the expected path, Sir." |

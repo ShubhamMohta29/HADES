@@ -32,12 +32,17 @@ Append-only plain text file. One note per line.
 
 ```
 [2025-05-17 14:32] refactor auth tomorrow
-[2025-05-17 15:01] call dentist
+[2025-05-17 15:01] [personal] call dentist
+[2025-05-17 16:00] [work] finish the API redesign doc
 ```
 
-**Written by**: `commands.save_note(note)` — appends `[YYYY-MM-DD HH:MM] {note}\n`
-**Read by**: `commands.read_notes()` — returns full file content as a string
-maybe consider hosting it on smthng like supabase as well. should maybe consider some other backend websites.
+**Category tag** is optional. When present it appears as `[word]` immediately after the timestamp.
+
+**Written by**: `commands.save_note(note, category=None)` — appends `[YYYY-MM-DD HH:MM] [category] {note}\n` (category omitted if `None`)
+**Read by**: `commands.read_notes(category=None)` — returns all lines, or filters by category tag if given
+**Categories listed by**: `commands.get_existing_categories()` — scans the file for `[letters-only]` tags, defaults to `["personal", "work"]` if none exist yet
+
+> Supabase migration planned — see doc 07.
 
 ---
 
@@ -73,7 +78,7 @@ Binary Piper TTS voice model. Read once at first `speak()` call. Not committed t
 | Module | Owns | Side effects |
 |---|---|---|
 | `brain.py` | `conversation_history` list, `conversation_history.json` | Writes JSON on every reply |
-| `commands.py` | `notes.txt`, volume, OS shell calls | Appends to notes; fires system commands |
+| `commands.py` | `notes.txt` (read + categorised write), volume, OS shell calls | Appends to notes; fires system commands; exposes `HELP_HTML` constant |
 | `voice.py` | Mic stream, Piper audio output | Plays audio; prints to stdout |
 | `vision.py` | Screen capture (ephemeral) | No persistence |
 | `weather.py` | None | HTTP GET to OpenWeatherMap |
@@ -92,16 +97,26 @@ Binary Piper TTS voice model. Read once at first `speak()` call. Not committed t
 Priority order (first match wins):
 
 ```
+0. _pending_state active                   → _handle_pending_state(t)   ← multi-turn (e.g. note category)
 1. "clear memory" / "forget everything"   → brain.clear_memory()
 2. Screen keywords                         → vision.analyze_screen()
-3. "weather"                               → weather.get_weather(city)
-4. "news" / "headlines"                   → news.get_news(topic)
-5. stock regex (\bstock\b)                 → stocks.get_stock(symbol)
-6. crypto coin keywords                    → stocks.get_crypto(coin_id)
-7. Spotify trigger phrases                 → spotify.spotify_command(text)
-8. PC commands (volume, time, apps, etc.) → commands.handle_command(text)
-9. fallback                                → brain.think(text)
+3. "help" / "commands" / exact phrases    → gui.add_help_card() + short spoken intro
+4. Note-taking triggers                    → _start_note_flow(note)      ← conversational category selection
+5. "weather"                               → weather.get_weather(city)
+6. "news" / "headlines"                   → news.get_news(topic)
+7. stock regex (\bstock\b|\bshare price\b) → stocks.get_stock(symbol)   ← handles "Tesla stock" AND "stock Tesla"
+8. crypto coin keywords                    → stocks.get_crypto(coin_id)
+9. Spotify trigger phrases                 → spotify.spotify_command(text)
+10. PC commands (volume, time, apps, etc.) → commands.handle_command(text)
+11. fallback                               → brain.think(text)
 ```
+
+### Multi-turn note flow (`_pending_state`)
+
+When note content is detected but no category specified:
+1. `_start_note_flow(content)` — reads existing categories, calls LLM to pick best fit, stores `_pending_state`, asks user
+2. Next `route()` call — `_handle_pending_state(t)` parses: known category name → saves; affirmative ("yes"/"sure") → uses suggestion; single new word → creates new category; ambiguous → re-asks once
+3. Saying a sleep word clears `_pending_state` immediately
 
 ---
 
@@ -186,8 +201,9 @@ client.chat.completions.create(
 | JS function | Called when |
 |---|---|
 | `addMessage(who, text)` | New chat message to display |
-| `addSystemMessage(text)` | System event (boot, auth, etc.) |
+| `addSystemMessage(text)` | System event (boot, auth, mic status, etc.) |
 | `setStatus(state)` | Orb state change |
+| `addHelpCard(html)` | User says "help" or "commands" — renders the styled command reference card |
 
 ### JS → Python (via `pywebview.api`)
 | Python method | JS call |
