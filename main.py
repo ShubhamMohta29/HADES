@@ -184,7 +184,7 @@ def route(text, gui):
     if any(w in t for w in SCREEN_WORDS):
         from vision import analyze_screen
         return analyze_screen(
-            f"The user says: '{text}'. Please help them based on what's on screen."
+            f"Describe what you see in the attached screenshot and help the user with their request: '{text}'."
         )
 
     # ── Help command ──────────────────────────────────────────────────────────
