@@ -339,9 +339,27 @@ def hades_loop(gui):
 if __name__ == "__main__":
     gui = HadesGUI()
 
+    _text_state = {"sleeping": False}
+
     def handle_text_command(text):
         try:
             gui.add_message("You", text)
+            t = text.lower()
+
+            # Wake from text-triggered sleep on any input
+            if _text_state["sleeping"]:
+                _text_state["sleeping"] = False
+                gui.set_status("standby")
+
+            if any(w in t for w in SLEEP_WORDS):
+                _pending_state.clear()
+                response = "Shutting down, Sir. Goodnight."
+                gui.set_status("sleeping")
+                speak(response)
+                gui.add_message("Hades", response)
+                _text_state["sleeping"] = True
+                return
+
             gui.set_status("thinking")
             response = route(text, gui)
             gui.set_status("speaking")
