@@ -89,20 +89,41 @@ def _speak_piper_api(text: str):
         log.error("sounddevice/numpy not installed — cannot play Piper audio")
         return
 
-    # Piper yields AudioChunk-like objects with float32 samples and sample_rate
-    sample_rate = _piper_voice.config.sample_rate
+    piper_rate = _piper_voice.config.sample_rate
     chunks = []
     for audio_chunk in _piper_voice.synthesize(text):
-        # piper >=1.3 returns AudioChunk with .audio_int16_array; older returns bytes
         if hasattr(audio_chunk, "audio_int16_array"):
             chunks.append(np.array(audio_chunk.audio_int16_array, dtype=np.int16))
         else:
-            chunks.append(np.frombuffer(audio_chunk, dtype=np.int16))
+            raw = bytes(audio_chunk)
+            if len(raw) % 2:
+                raw = raw[:-1]  # drop stray byte to keep int16 alignment
+            chunks.append(np.frombuffer(raw, dtype=np.int16))
 
     if not chunks:
         return
-    audio = np.concatenate(chunks)
-    sd.play(audio, samplerate=sample_rate, blocking=True)
+
+    # Convert to float32 — sounddevice's native type, avoids implicit int16 resampling
+    audio = np.concatenate(chunks).astype(np.float32) / 32768.0
+
+    # Resample to the device's native rate if Piper's rate (usually 22050) differs.
+    # Mismatched rates cause the driver to interpolate, producing audible stuttering.
+    try:
+        device_rate = int(sd.query_devices(kind='output')['default_samplerate'])
+    except Exception:
+        device_rate = piper_rate
+
+    if device_rate != piper_rate:
+        import math
+        ratio = device_rate / piper_rate
+        new_len = math.ceil(len(audio) * ratio)
+        audio = np.interp(
+            np.linspace(0, len(audio) - 1, new_len),
+            np.arange(len(audio)),
+            audio,
+        ).astype(np.float32)
+
+    sd.play(audio, samplerate=device_rate, blocking=True)
 
 
 def _speak_piper_cli(text: str):
@@ -212,7 +233,9 @@ def listen(timeout: int = 10):
     try:
         with sr.Microphone() as source:
             print("Listening...")
-            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            # Skip ambient-noise calibration here — dynamic_energy_threshold handles it
+            # continuously, and the 0.5s calibration was adding noticeable dead-time
+            # at the start of every conversational turn.
             try:
                 audio = recognizer.listen(source, timeout=timeout)
             except sr.WaitTimeoutError:
@@ -243,7 +266,7 @@ def wait_for_wake_word():
     while True:
         try:
             with sr.Microphone() as source:
-                recognizer.adjust_for_ambient_noise(source, duration=0.3)
+                recognizer.adjust_for_ambient_noise(source, duration=0.1)
                 audio = recognizer.listen(source, timeout=5, phrase_time_limit=3)
             text = recognizer.recognize_google(audio).lower()
             if any(w in text for w in WAKE_WORDS):
@@ -274,7 +297,7 @@ def listen_for_wake_word_once(timeout: int = 3) -> bool:
     global _last_wake_time
     try:
         with sr.Microphone() as source:
-            recognizer.adjust_for_ambient_noise(source, duration=0.2)
+            recognizer.adjust_for_ambient_noise(source, duration=0.1)
             audio = recognizer.listen(source, timeout=timeout, phrase_time_limit=3)
         text = recognizer.recognize_google(audio).lower()
         if any(w in text for w in WAKE_WORDS):

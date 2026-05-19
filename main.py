@@ -281,12 +281,10 @@ def hades_loop(gui):
             if _sleeping:
                 _sleeping = False
                 gui.set_status("listening")
-                time.sleep(0.3)
                 speak("I'm back, Sir. What do you need?")
                 gui.add_message("Hades", "I'm back, Sir. What do you need?")
             else:
                 gui.set_status("listening")
-                time.sleep(0.3)
                 speak("Yes, Sir?")
                 gui.add_message("Hades", "Yes, Sir?")
 

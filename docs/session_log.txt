@@ -10,6 +10,107 @@ Format:
   NEXT        What to pick up next session
 
 --------------------------------------------------------------------------------
+SESSION 007 — 2026-05-19
+--------------------------------------------------------------------------------
+WHAT
+  Fixed two audio/latency bugs: TTS stuttering on Windows and a ~1 second delay
+  between wake word detection and HADES's first spoken response.
+
+  BUG FIX — PIPER TTS STUTTERING ON WINDOWS
+  - Root cause: Piper's alan-medium voice outputs at 22050 Hz (int16). Windows
+    audio devices default to 44100 or 48000 Hz. Passing mismatched rates to
+    sd.play() forces the driver to resample internally, producing audible stutters
+    and dropouts.
+  - Fix: _speak_piper_api() in voice.py now queries the output device's native
+    sample rate via sd.query_devices(kind='output') and, when it differs from
+    Piper's rate, resamples the audio using np.interp before playback.
+  - Also converts int16 → float32 (sounddevice's native type) and guards against
+    odd-byte chunks from the synthesizer that would corrupt int16 alignment.
+
+  BUG FIX — ~1 SECOND WAKE RESPONSE DELAY
+  - Root cause: hades_loop() in main.py called time.sleep(0.3) immediately after
+    wake word detection, before invoking speak("Yes, Sir?"). The 300 ms dead time
+    added on top of Piper synthesis time made the system feel unresponsive.
+  - Fix: both sleep(0.3) calls removed (sleeping-wake and standby-wake branches).
+    Piper synthesis now begins immediately after wake word detection.
+
+  ADDITIONAL AUDIO IMPROVEMENT — REMOVE PER-CALL MIC CALIBRATION
+  - listen() previously called adjust_for_ambient_noise(duration=0.5) on every
+    invocation, adding a 500 ms silent gap at the start of each listening window.
+  - Removed: dynamic_energy_threshold=True already adjusts the energy threshold
+    continuously during recognition, making per-call calibration redundant.
+  - wait_for_wake_word() and listen_for_wake_word_once() calibration reduced
+    from 0.3 s / 0.2 s to 0.1 s each.
+
+FILES MODIFIED
+  voice.py            _speak_piper_api(): int16→float32, odd-byte guard, device-rate
+                      query + np.interp resampling; listen(): removed
+                      adjust_for_ambient_noise; wake word loops: 0.3→0.1 s calibration
+  main.py             hades_loop(): removed time.sleep(0.3) from both wake branches
+  docs/index.txt      voice.py + main.py descriptions updated; KNOWN ISSUES section
+                      updated with fixed bugs
+  docs/session_log.txt  This entry
+
+NEXT
+  - Supabase + semantic memory (doc 07):
+      1. Create Supabase project; run SQL from §3 (pgvector, tables, RLS, function)
+      2. Add SUPABASE_URL + SUPABASE_ANON_KEY to .env
+      3. Write db.py
+      4. Add login UI to gui.py
+      5. Refactor brain.py for two-tier memory
+      6. Refactor commands.py notes to use db.py
+      7. Thread user_id through main.py
+
+--------------------------------------------------------------------------------
+SESSION 006 — 2026-05-19
+--------------------------------------------------------------------------------
+WHAT
+  Fixed two bugs: sleep via text input not updating the UI, and screen vision
+  responses sounding like a generic third-party AI rather than HADES itself.
+
+  BUG FIX — SLEEP NOT UPDATING UI VIA TEXT INPUT
+  - handle_text_command() in main.py had no sleep word detection; it always
+    routed to route() and reset status to "standby" regardless of input.
+  - Added _text_state dict (closure-scoped) with a "sleeping" bool to track
+    sleep state across text commands independently of the voice loop.
+  - When a sleep word is typed: _pending_state is cleared, orb enters SLEEPING
+    state, goodbye is spoken, the function returns early (no standby reset).
+  - Any subsequent text command wakes HADES back to standby before routing.
+  - Voice loop sleep state (_sleeping) is unchanged; the two paths are independent.
+
+  BUG FIX — VISION RESPONSES SOUNDING LIKE A THIRD-PARTY AI
+  - vision.py sent no system prompt to the Groq Llama 4 Scout API; the model
+    responded as a generic assistant and sometimes denied it could see anything.
+  - Added a HADES persona system prompt to the vision API call: tells the model
+    a screenshot has been captured and attached, to describe it directly, never
+    claim it cannot see the screen, respond as HADES, address the user as Sir,
+    keep responses to 2-3 sentences, no markdown or bullet points.
+  - Rephrased the user-facing prompt in main.py route() from a passive
+    "please help them based on what's on screen" to an imperative
+    "Describe what you see in the attached screenshot and help the user with
+    their request: '...'" — reduces model refusal when the system prompt alone
+    is not enough.
+
+FILES MODIFIED
+  main.py             _text_state + sleep-word detection in handle_text_command();
+                      analyze_screen() prompt rephrased to be imperative
+  vision.py           HADES persona system message added to Groq vision API call
+  docs/03-AppFlow.md  Text Command journey updated; Sleep flow updated for text input
+  docs/05-BackendSchema.md  Groq Vision API contract updated to show system message
+  docs/index.txt      vision.py + main.py descriptions updated; session log note
+  docs/session_log.txt  This entry
+
+NEXT
+  - Supabase + semantic memory (doc 07):
+      1. Create Supabase project; run SQL from §3 (pgvector, tables, RLS, function)
+      2. Add SUPABASE_URL + SUPABASE_ANON_KEY to .env
+      3. Write db.py
+      4. Add login UI to gui.py
+      5. Refactor brain.py for two-tier memory
+      6. Refactor commands.py notes to use db.py
+      7. Thread user_id through main.py
+
+--------------------------------------------------------------------------------
 SESSION 005 — 2026-05-18
 --------------------------------------------------------------------------------
 WHAT

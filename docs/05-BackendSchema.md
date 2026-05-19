@@ -187,11 +187,26 @@ client.chat.completions.create(
 ```python
 client.chat.completions.create(
     model="meta-llama/llama-4-scout-17b-16e-instruct",
-    messages=[{ role: user, content: [image_url, text] }],
+    messages=[
+        {
+            "role": "system",
+            "content": (
+                "You are HADES. A screenshot has been captured and attached — "
+                "describe exactly what is visible in it. Never say you cannot "
+                "see the screen; the image is present. Respond as HADES speaking "
+                "directly. Address the user as Sir. Keep it to 2-3 sentences "
+                "unless detail is required. No markdown or bullet points."
+            )
+        },
+        { "role": "user", "content": [image_url, text] }
+    ],
     max_tokens=500,
     temperature=0.5,
 )
 ```
+
+The system prompt is required to prevent the model from denying screen access or responding as a generic assistant. The user-facing `text` prompt (built in `main.py:route()`) is phrased imperatively: `"Describe what you see in the attached screenshot and help the user with their request: '...'"`.
+
 
 ---
 

@@ -1,7 +1,7 @@
 ================================================================================
 HADES — Human Assistance and Decision Engineering System
 Project Index & Status
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 ================================================================================
 
 OVERVIEW
@@ -23,11 +23,20 @@ WHAT HAS BEEN BUILT (complete)
                       words (WAKE_WORDS env var) with per-word fuzzy STT-mishear
                       variant sets; 2.5s debounce (WAKE_DEBOUNCE env var);
                       MIC_ERROR sentinel distinguishes mic failure from silence;
-                      listen_for_wake_word_once() helper for sleep-mode checks
+                      listen_for_wake_word_once() helper for sleep-mode checks;
+                      no per-call ambient-noise calibration in listen() (dynamic_energy
+                      _threshold handles it continuously); _speak_piper_api() resamples
+                      Piper's 22050 Hz output to the device's native rate (queried via
+                      sd.query_devices()) and converts int16→float32 before playback to
+                      eliminate Windows audio-driver stuttering
   - main.py           Full voice loop (standby → wake → listen → think → speak),
                       true sleep mode (mic on but only wake word processed; orb dims),
-                      intent router (12-step priority chain), text command handler,
-                      _pending_state multi-turn state machine for conversational flows
+                      intent router (12-step priority chain), text command handler
+                      with sleep-word detection (_text_state flag sets orb to SLEEPING
+                      and skips standby reset; next text command wakes back to standby),
+                      _pending_state multi-turn state machine for conversational flows;
+                      zero-delay wake response (no artificial sleep between wake
+                      detection and "Yes, Sir?" — Piper synthesis begins immediately)
   - config.py         .env loader for all API keys and settings flags, including
                       WAKE_WORDS and WAKE_DEBOUNCE
   - gui.py            pywebview window, Python↔JS bridge, status/message helpers,
@@ -59,7 +68,10 @@ WHAT HAS BEEN BUILT (complete)
                       shuffle, current track query; HTTP-status-aware error
                       summarization (401/403/404/429/503 → clean spoken sentences)
   - vision.py         Screen capture (PIL.ImageGrab) → Groq Llama 4 Scout
-                      (multimodal) — analyzes screen on voice trigger
+                      (multimodal) — analyzes screen on voice trigger; HADES
+                      persona system prompt instructs the model to describe the
+                      screenshot directly as HADES (never deny screen access,
+                      address user as Sir, no markdown, 2-3 sentences max)
 
 [AUTH]
   - face_auth.py      Optional face verification gate (OpenCV + face_recognition)
@@ -122,7 +134,8 @@ FILE MAP
 --------------------------------------------------------------------------------
 
 Jarvis/
-  main.py                       Entry point, voice loop, intent router, note state machine
+  main.py                       Entry point, voice loop, intent router, note state machine,
+                                text-input sleep handling (_text_state)
   brain.py                      Groq LLM + conversation memory
   voice.py                      Piper TTS + SpeechRecognition STT + wake word system
   vision.py                     Screen capture + Groq multimodal vision
@@ -162,5 +175,14 @@ KNOWN ISSUES / BUGS
 --------------------------------------------------------------------------------
 
   - None currently documented. File bugs here as discovered.
+
+  FIXED THIS SESSION
+  - Audio stuttering during Piper TTS playback: caused by sample-rate mismatch
+    (Piper 22050 Hz vs Windows device 44100/48000 Hz) and int16 type mismatch.
+    Fixed in voice.py _speak_piper_api() via device-rate query + resampling +
+    int16→float32 conversion.
+  - ~1 second delay between wake word detection and "Yes, Sir?" response: caused
+    by an unconditional time.sleep(0.3) before Piper synthesis. Removed from
+    hades_loop() in main.py; synthesis now starts immediately after wake.
 
 ================================================================================

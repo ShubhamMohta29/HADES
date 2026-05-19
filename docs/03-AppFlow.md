@@ -61,9 +61,13 @@ If `FACE_AUTH_ENABLED=true`: face verification runs first. Pass → normal boot.
 2. User types in the input bar and presses Enter or clicks SEND
 3. Message appears in chat as "You: ..."
 4. `handle_text_command()` called on a new thread (does not block GUI)
-5. Orb transitions through THINKING → SPEAKING states
-6. Piper TTS speaks the reply; reply appears in chat
-7. Orb returns to STANDBY
+5. If a sleep word is detected (e.g. "go to sleep", "goodbye"):
+   - Orb enters **SLEEPING** state; HADES speaks and logs "Shutting down, Sir. Goodnight."
+   - Function returns early — orb stays in SLEEPING, not reset to STANDBY
+   - Next text command automatically wakes HADES back to STANDBY before routing
+6. Otherwise: orb transitions through THINKING → SPEAKING states
+7. Piper TTS speaks the reply; reply appears in chat
+8. Orb returns to STANDBY
 
 ---
 
@@ -95,12 +99,9 @@ State is set via `gui.set_status(state)` which calls JS `setStatus(state)` which
 ---
 
 ## Sleep / Deactivation Flow
-- Triggers: "sleep", "goodbye", "good bye", "goodnight", "good night", "that's all", "stand by", "standby", "go to sleep"
-- HADES speaks "Going to sleep, Sir. Call me when you need me."
-- Voice loop breaks inner command loop → outer loop sets `_sleeping = True`
-- Orb enters **sleeping** state (near-dark, slow pulse)
-- `wait_for_wake_word()` runs: mic stays open, captures audio, sends to Google STT — but only the HADES wake word triggers activation; all other speech is silently discarded
-- User says "HADES" → HADES responds "I'm back, Sir. What do you need?" → `_sleeping` reset → command mode resumes
+- Triggers (voice or text): "sleep", "goodbye", "good bye", "goodnight", "good night", "that's all", "stand by", "standby", "go to sleep"
+- **Via voice loop**: HADES speaks "Going to sleep, Sir. Call me when you need me." → inner command loop breaks → outer loop sets `_sleeping = True` → orb enters **sleeping** state → `wait_for_wake_word()` keeps mic open but discards all speech except the wake word → user says "HADES" → HADES responds "I'm back, Sir. What do you need?" → `_sleeping` reset → command mode resumes
+- **Via text input**: `handle_text_command()` detects sleep words → clears `_pending_state` → orb enters **sleeping** state → HADES speaks and logs "Shutting down, Sir. Goodnight." → returns early without resetting to STANDBY → `_text_state["sleeping"]` flag set; next text command wakes back to STANDBY before routing (voice loop is unaffected)
 
 ---
 
