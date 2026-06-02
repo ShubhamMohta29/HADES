@@ -24,7 +24,11 @@ Thumbs.db
  
 # Notes and conversation history
 notes.txt
+notes.txt.bak
 conversation_history.json
+
+# Face recognition biometric data
+face_encodings.pkl
  
 # Spotify auth cache
 .cache

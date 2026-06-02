@@ -11,7 +11,6 @@ python-dotenv
 spotipy
 opencv-python
 Pillow
-google-generativeai
 pywebview
 # piper-tts is NOT listed here — install.bat downloads the prebuilt Windows CLI binary
 # instead of the Python package, which requires Visual C++ to compile.
