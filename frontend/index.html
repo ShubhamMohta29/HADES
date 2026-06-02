@@ -273,6 +273,113 @@
     color: var(--text-dim);
   }
 
+  /* ── Login overlay ─────────────────────────────────────────────────────── */
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 4, 8, 0.97);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    backdrop-filter: blur(4px);
+  }
+  .login-overlay.hidden { display: none; }
+
+  .login-box {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 300px;
+    padding: 28px 24px;
+    border: 1px solid var(--cyan);
+    border-radius: 6px;
+    background: rgba(0, 20, 30, 0.95);
+    box-shadow: 0 0 30px rgba(0, 229, 255, 0.2);
+  }
+  .login-title {
+    color: var(--cyan);
+    font-size: 14px;
+    letter-spacing: 4px;
+    text-align: center;
+    text-shadow: 0 0 10px var(--cyan);
+  }
+  .login-sub {
+    color: var(--text-dim);
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-align: center;
+    margin-top: -4px;
+    margin-bottom: 6px;
+  }
+  .login-box input[type="email"],
+  .login-box input[type="password"] {
+    background: rgba(0, 20, 30, 0.7);
+    border: 1px solid var(--cyan-deep);
+    border-radius: 4px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    user-select: text;
+  }
+  .login-box input:focus {
+    border-color: var(--cyan);
+    box-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
+  }
+  .login-btn {
+    background: rgba(0, 229, 255, 0.08);
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    padding: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    letter-spacing: 3px;
+    transition: all 0.2s;
+    margin-top: 2px;
+  }
+  .login-btn:hover:not(:disabled) {
+    background: rgba(0, 229, 255, 0.15);
+    box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+  }
+  .login-btn:disabled { opacity: 0.5; cursor: default; }
+  .login-error {
+    color: #ff5555;
+    font-size: 11px;
+    text-align: center;
+    min-height: 14px;
+  }
+  .login-skip {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    font-family: inherit;
+    font-size: 10px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    text-align: center;
+    padding: 4px;
+    transition: color 0.2s;
+  }
+  .login-skip:hover { color: var(--text); }
+
+  .auth-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .signup-pending {
+    color: var(--cyan);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-align: center;
+    line-height: 1.6;
+  }
+
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes pulse {
     0%, 100% { transform: scale(1); }
@@ -285,6 +392,38 @@
 </style>
 </head>
 <body data-status="standby">
+
+  <!-- Login overlay — hidden by Python once auth is resolved -->
+  <div id="login-overlay" class="login-overlay">
+    <div class="login-box">
+
+      <!-- Login panel -->
+      <div id="panel-login" class="auth-panel">
+        <div class="login-title">&#9672;&nbsp; HADES ACCESS</div>
+        <div class="login-sub">AUTHENTICATION REQUIRED</div>
+        <input id="login-email" type="email" placeholder="EMAIL ADDRESS" autocomplete="email" />
+        <input id="login-pass" type="password" placeholder="PASSWORD" autocomplete="current-password" />
+        <button id="login-btn" class="login-btn">AUTHENTICATE</button>
+        <div id="login-error" class="login-error"></div>
+        <button id="goto-signup" class="login-skip">NEW USER? CREATE ACCOUNT</button>
+        <button id="login-skip" class="login-skip">SKIP — LOCAL MODE</button>
+      </div>
+
+      <!-- Sign-up panel -->
+      <div id="panel-signup" class="auth-panel" style="display:none">
+        <div class="login-title">&#9672;&nbsp; CREATE ACCOUNT</div>
+        <div class="login-sub">NEW USER REGISTRATION</div>
+        <input id="signup-email" type="email" placeholder="EMAIL ADDRESS" autocomplete="email" />
+        <input id="signup-pass" type="password" placeholder="PASSWORD" autocomplete="new-password" />
+        <input id="signup-pass2" type="password" placeholder="CONFIRM PASSWORD" autocomplete="new-password" />
+        <button id="signup-btn" class="login-btn">REGISTER</button>
+        <div id="signup-error" class="login-error"></div>
+        <div id="signup-pending" class="signup-pending" style="display:none">CHECK YOUR EMAIL TO CONFIRM YOUR ACCOUNT, THEN SIGN IN.</div>
+        <button id="goto-login" class="login-skip">ALREADY HAVE AN ACCOUNT? SIGN IN</button>
+      </div>
+
+    </div>
+  </div>
 
   <div class="titlebar">[ HUMAN ASSISTANCE AND DECISION ENGINEERING SYSTEM  v3.0 ]</div>
 
@@ -381,6 +520,109 @@
   });
 
   window.addEventListener("load", function() { inputEl.focus(); });
+
+  // ── Login panel ────────────────────────────────────────────────────────────
+  window.skipLogin = function() {
+    var overlay = document.getElementById("login-overlay");
+    if (overlay) overlay.classList.add("hidden");
+    inputEl.focus();
+  };
+
+  window.showLoginError = function(msg) {
+    document.getElementById("login-error").textContent = msg;
+    var btn = document.getElementById("login-btn");
+    btn.disabled = false;
+    btn.textContent = "AUTHENTICATE";
+  };
+
+  document.getElementById("login-btn").addEventListener("click", function() {
+    var email = document.getElementById("login-email").value.trim();
+    var pass  = document.getElementById("login-pass").value;
+    if (!email || !pass) {
+      window.showLoginError("Email and password are required.");
+      return;
+    }
+    this.disabled = true;
+    this.textContent = "AUTHENTICATING...";
+    document.getElementById("login-error").textContent = "";
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.login(email, pass);
+    }
+  });
+
+  document.getElementById("login-skip").addEventListener("click", function() {
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.skip_login();
+      window.skipLogin();
+    } else {
+      window.skipLogin();
+    }
+  });
+
+  document.getElementById("login-pass").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") document.getElementById("login-btn").click();
+  });
+
+  // ── Panel switching ────────────────────────────────────────────────────────
+  document.getElementById("goto-signup").addEventListener("click", function() {
+    document.getElementById("panel-login").style.display = "none";
+    document.getElementById("panel-signup").style.display = "flex";
+    document.getElementById("signup-email").focus();
+  });
+
+  document.getElementById("goto-login").addEventListener("click", function() {
+    document.getElementById("panel-signup").style.display = "none";
+    document.getElementById("panel-login").style.display = "flex";
+    document.getElementById("login-email").focus();
+  });
+
+  // ── Sign-up submit ─────────────────────────────────────────────────────────
+  document.getElementById("signup-btn").addEventListener("click", function() {
+    var email = document.getElementById("signup-email").value.trim();
+    var pass  = document.getElementById("signup-pass").value;
+    var pass2 = document.getElementById("signup-pass2").value;
+    document.getElementById("signup-error").textContent = "";
+    if (!email || !pass) {
+      document.getElementById("signup-error").textContent = "Email and password are required.";
+      return;
+    }
+    if (pass !== pass2) {
+      document.getElementById("signup-error").textContent = "Passwords do not match.";
+      return;
+    }
+    if (pass.length < 6) {
+      document.getElementById("signup-error").textContent = "Password must be at least 6 characters.";
+      return;
+    }
+    this.disabled = true;
+    this.textContent = "CREATING ACCOUNT...";
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.register(email, pass);
+    }
+  });
+
+  document.getElementById("signup-pass").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") document.getElementById("signup-pass2").focus();
+  });
+
+  document.getElementById("signup-pass2").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") document.getElementById("signup-btn").click();
+  });
+
+  window.showSignupError = function(msg) {
+    document.getElementById("signup-error").textContent = msg;
+    var btn = document.getElementById("signup-btn");
+    btn.disabled = false;
+    btn.textContent = "REGISTER";
+  };
+
+  window.showSignupPending = function() {
+    document.getElementById("signup-pending").style.display = "block";
+    var btn = document.getElementById("signup-btn");
+    btn.disabled = true;
+    btn.style.display = "none";
+    document.getElementById("goto-login").textContent = "SIGN IN NOW";
+  };
 </script>
 </body>
 </html>

@@ -21,6 +21,10 @@ FACE_AUTH_ENABLED = os.getenv("FACE_AUTH_ENABLED", "false").lower() == "true"
 # Piper TTS voice model path — set this in .env if you place the .onnx elsewhere
 PIPER_MODEL = os.getenv("PIPER_MODEL", "")  # empty = default ./voices/en_GB-alan-medium.onnx
 
+# Supabase (optional — enables cloud memory + semantic search)
+SUPABASE_URL      = os.getenv("SUPABASE_URL", "")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+
 # Wake word settings
 # Comma-separated list of wake words (e.g. "hades,jarvis"). First is primary.
 WAKE_WORDS_ENV  = os.getenv("WAKE_WORDS", "hades")

@@ -1,4 +1,10 @@
-"""Core AI logic for HADES — Groq Llama 3.3 70B with persistent, trimmed memory."""
+"""Core AI logic for HADES — Groq Llama 3.3 70B.
+
+Memory strategy:
+  Supabase enabled  → Two-tier: last 12 messages (recency) + top 5 semantically
+                      relevant past turns (pgvector cosine search).
+  Supabase absent   → Single-tier: last 20 turns from conversation_history.json.
+"""
 
 import json
 import threading
@@ -14,10 +20,9 @@ if not GROQ_API_KEY:
 
 client = Groq(api_key=GROQ_API_KEY)
 
-# Model & memory settings
-MODEL = "llama-3.3-70b-versatile"   # upgraded from llama-3.1-8b-instant
+MODEL = "llama-3.3-70b-versatile"
 MAX_TOKENS = 1024
-MAX_HISTORY_TURNS = 20              # keep system prompt + last N user/assistant pairs
+MAX_HISTORY_TURNS = 20  # local-file fallback only
 
 HISTORY_FILE = Path(__file__).parent / "conversation_history.json"
 
@@ -40,22 +45,21 @@ Tone examples:
 - "All systems functioning within normal parameters."
 """
 
-# Thread-safe access to conversation history
 _lock = threading.Lock()
 
+
+# ── Local-file memory (fallback when Supabase is not configured) ─────────────
 
 def _default_history():
     return [{"role": "system", "content": SYSTEM_PROMPT}]
 
 
 def load_memory():
-    """Load conversation history from disk, or return a fresh one."""
     if HISTORY_FILE.exists():
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list) and data and data[0].get("role") == "system":
-                    # Refresh system prompt in case we've updated it
                     data[0]["content"] = SYSTEM_PROMPT
                     return data
         except Exception as e:
@@ -72,20 +76,50 @@ def save_memory(history):
 
 
 def _trim(history):
-    """Keep system prompt + last MAX_HISTORY_TURNS * 2 messages."""
     if len(history) <= 1 + MAX_HISTORY_TURNS * 2:
         return history
-    return [history[0]] + history[-MAX_HISTORY_TURNS * 2 :]
+    return [history[0]] + history[-MAX_HISTORY_TURNS * 2:]
 
 
-conversation_history = load_memory()
+_local_history = load_memory()
 
 
-def think(user_input: str) -> str:
-    """Send user input + history to Groq, return assistant reply."""
-    with _lock:
-        conversation_history.append({"role": "user", "content": user_input})
-        messages = list(conversation_history)  # snapshot for the API call
+# ── Two-tier prompt builder (Supabase path) ───────────────────────────────────
+
+def _build_prompt_supabase(user_id: str, user_message: str, recent: list) -> list:
+    import db
+    relevant = db.retrieve_relevant(user_id, user_message, k=5)
+    memory_block = "\n".join(
+        f"[Past {r['role']}]: {r['content']}" for r in relevant
+    )
+    system = SYSTEM_PROMPT
+    if memory_block:
+        system += f"\n\n--- Relevant past context ---\n{memory_block}"
+    return [{"role": "system", "content": system}] + recent + [
+        {"role": "user", "content": user_message}
+    ]
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def think(user_input: str, user_id: str = None) -> str:
+    """Send user input to Groq and return the assistant reply.
+
+    user_id: Supabase user UUID. If provided (and Supabase is configured) the
+             two-tier memory path is used. Otherwise falls back to local JSON.
+    """
+    import db as _db
+
+    use_supabase = bool(user_id and _db.is_available())
+
+    if use_supabase:
+        with _lock:
+            recent = _db.load_recent(user_id, n=12)
+        messages = _build_prompt_supabase(user_id, user_input, recent)
+    else:
+        with _lock:
+            _local_history.append({"role": "user", "content": user_input})
+            messages = list(_local_history)
 
     try:
         response = client.chat.completions.create(
@@ -97,31 +131,44 @@ def think(user_input: str) -> str:
         reply = response.choices[0].message.content.strip()
     except GroqError as e:
         log.error("Groq API error: %s", e)
-        # Roll back the user message we just appended
-        with _lock:
-            if conversation_history and conversation_history[-1]["role"] == "user":
-                conversation_history.pop()
+        if not use_supabase:
+            with _lock:
+                if _local_history and _local_history[-1]["role"] == "user":
+                    _local_history.pop()
         return "My connection to the language server is disrupted, Sir. Try again in a moment."
     except Exception as e:
         log.exception("Unexpected error in think(): %s", e)
-        with _lock:
-            if conversation_history and conversation_history[-1]["role"] == "user":
-                conversation_history.pop()
+        if not use_supabase:
+            with _lock:
+                if _local_history and _local_history[-1]["role"] == "user":
+                    _local_history.pop()
         return "I've encountered an unexpected fault, Sir. My apologies."
 
-    with _lock:
-        conversation_history.append({"role": "assistant", "content": reply})
-        trimmed = _trim(conversation_history)
-        conversation_history[:] = trimmed
-        save_memory(conversation_history)
+    if use_supabase:
+        try:
+            _db.save_message(user_id, "user", user_input)
+            _db.save_message(user_id, "assistant", reply)
+        except Exception as e:
+            log.warning("Failed to persist to Supabase: %s", e)
+    else:
+        with _lock:
+            _local_history.append({"role": "assistant", "content": reply})
+            trimmed = _trim(_local_history)
+            _local_history[:] = trimmed
+            save_memory(_local_history)
 
     return reply
 
 
-def clear_memory() -> str:
-    """Reset conversation to just the system prompt."""
-    global conversation_history
+def clear_memory(user_id: str = None) -> str:
+    import db as _db
+    if user_id and _db.is_available():
+        try:
+            _db.clear_memory_db(user_id)
+        except Exception as e:
+            log.warning("Failed to clear Supabase memory: %s", e)
+    global _local_history
     with _lock:
-        conversation_history = _default_history()
-        save_memory(conversation_history)
+        _local_history = _default_history()
+        save_memory(_local_history)
     return "Memory cleared, Sir."

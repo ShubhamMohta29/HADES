@@ -48,6 +48,37 @@ except Exception:
     _AUDIO_OK = False
 
 
+_PIPER_MODEL_URL = (
+    "https://huggingface.co/rhasspy/piper-voices/resolve/main"
+    "/en/en_GB/alan/medium/"
+)
+_PIPER_MODEL_FILES = [
+    "en_GB-alan-medium.onnx",
+    "en_GB-alan-medium.onnx.json",
+]
+
+
+def _auto_download_piper(model_path: Path):
+    """Download the default Piper voice model if it is missing."""
+    import urllib.request
+
+    VOICES_DIR.mkdir(parents=True, exist_ok=True)
+    for fname in _PIPER_MODEL_FILES:
+        dest = VOICES_DIR / fname
+        if dest.exists():
+            continue
+        url = _PIPER_MODEL_URL + fname
+        log.info("Downloading Piper voice model: %s", fname)
+        print(f"[HADES] Downloading Piper model: {fname}  (first-run, ~60 MB) …")
+        try:
+            urllib.request.urlretrieve(url, dest)
+            log.info("Downloaded %s → %s", fname, dest)
+        except Exception as e:
+            log.error("Failed to download %s: %s", fname, e)
+            print(f"[HADES] WARNING: Could not auto-download {fname}: {e}")
+            print(f"        Download manually from: {url}")
+
+
 def _init_piper():
     """Lazy init of Piper. Returns True if ready."""
     global _PIPER_OK, _piper_voice
@@ -56,13 +87,17 @@ def _init_piper():
 
     model_path = Path(PIPER_MODEL)
     if not model_path.exists():
-        log.error(
-            "Piper voice model not found at %s. "
-            "Download one from https://github.com/rhasspy/piper/blob/master/VOICES.md "
-            "and place the .onnx + .onnx.json files in ./voices/",
-            model_path,
-        )
-        return False
+        # Only auto-download if this is the default model path inside ./voices/
+        if model_path.parent == VOICES_DIR:
+            _auto_download_piper(model_path)
+        if not model_path.exists():
+            log.error(
+                "Piper voice model not found at %s. "
+                "Download from https://github.com/rhasspy/piper/blob/master/VOICES.md "
+                "and place the .onnx + .onnx.json files in ./voices/",
+                model_path,
+            )
+            return False
 
     if _PIPER_API:
         try:
@@ -73,7 +108,12 @@ def _init_piper():
         except Exception as e:
             log.error("Piper API init failed: %s — falling back to CLI", e)
 
-    # Fallback: look for piper CLI on PATH
+    # Fallback: look for piper CLI — check local ./piper/piper.exe first, then PATH
+    _local_piper = Path(__file__).parent / "piper" / "piper.exe"
+    if _local_piper.exists():
+        _local_dir = str(_local_piper.parent)
+        if _local_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = _local_dir + os.pathsep + os.environ.get("PATH", "")
     if shutil.which("piper"):
         _PIPER_OK = True
         log.info("Piper CLI detected; using subprocess mode")

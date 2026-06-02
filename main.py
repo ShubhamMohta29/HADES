@@ -6,7 +6,10 @@ import logging
 import time
 from voice import listen, speak, wait_for_wake_word, MIC_ERROR
 from brain import think, clear_memory
-from commands import handle_command, save_note, get_existing_categories, HELP_HTML
+from commands import (
+    handle_command, save_note, get_existing_categories, HELP_HTML,
+    delete_last_note, delete_notes,
+)
 from gui import HadesGUI
 from config import FACE_AUTH_ENABLED, DEFAULT_CITY
 
@@ -39,8 +42,6 @@ def _spotify(text):
     return spotify_command(text)
 
 # ── Intent patterns ─────────────────────────────────────────────────────────
-# Order matters — first match wins.
-
 SCREEN_WORDS = (
     "look at my screen", "what's on my screen", "what is on my screen",
     "analyze my screen", "read my screen", "what do you see",
@@ -67,7 +68,6 @@ NOTE_TRIGGERS = (
     "add a note", "save a note", "add this note",
 )
 
-# Help phrases that should show the command card (exact strip match or regex).
 _HELP_PHRASES = frozenset({
     "help", "help me", "commands", "command list",
     "show commands", "list commands", "what can you do",
@@ -75,12 +75,10 @@ _HELP_PHRASES = frozenset({
 })
 
 # ── Pending multi-turn state ─────────────────────────────────────────────────
-# Used for conversational interactions that span two turns (e.g. note category).
 _pending_state: dict = {}
 
 
 def _suggest_category(note_content: str, categories: list) -> str:
-    """Quick LLM call to pick the most appropriate category for a note."""
     try:
         from brain import client as _groq, MODEL
         prompt = (
@@ -103,15 +101,15 @@ def _suggest_category(note_content: str, categories: list) -> str:
     return categories[0]
 
 
-def _start_note_flow(note_content: str) -> str:
-    """Store the note and ask the user which category to file it under."""
-    categories = get_existing_categories()
+def _start_note_flow(note_content: str, user_id: str = None) -> str:
+    categories = get_existing_categories(user_id)
     suggested = _suggest_category(note_content, categories)
     _pending_state.update({
         "action": "save_note",
         "content": note_content,
         "categories": categories,
         "suggested_category": suggested,
+        "user_id": user_id,
     })
     cats_display = ", ".join(f"'{c}'" for c in categories)
     return (
@@ -131,25 +129,19 @@ _STOP_WORDS = frozenset({
 
 
 def _handle_pending_state(t: str) -> str | None:
-    """
-    Handle the user's response to a pending multi-turn action.
-    Returns the response string, or None to fall through to normal routing.
-    """
     if _pending_state.get("action") != "save_note":
         _pending_state.clear()
         return None
 
     categories = _pending_state["categories"]
     suggested  = _pending_state["suggested_category"]
+    user_id    = _pending_state.get("user_id")
 
-    # 1. User named a known category explicitly
     chosen = next((c for c in categories if c.lower() in t), None)
 
-    # 2. Affirmative response → use suggested
     if not chosen and any(w in t for w in _AFFIRM):
         chosen = suggested
 
-    # 3. Single meaningful word → treat as a new category name
     if not chosen:
         words = [w for w in re.split(r"\W+", t) if len(w) > 2 and w not in _STOP_WORDS]
         if len(words) == 1:
@@ -158,15 +150,14 @@ def _handle_pending_state(t: str) -> str | None:
     if chosen:
         note = _pending_state["content"]
         _pending_state.clear()
-        save_note(note, chosen)
+        save_note(note, chosen, user_id=user_id)
         return f"Note saved under '{chosen}', Sir."
 
-    # User response was ambiguous — re-ask once
     cats_str = "' or '".join(categories)
     return f"Sorry, Sir — should I file it under '{cats_str}'? I still suggest '{suggested}'."
 
 
-def route(text, gui):
+def route(text, gui, user_id: str = None):
     t = text.lower()
 
     # ── Pending multi-turn state (always checked first) ──────────────────────
@@ -174,13 +165,13 @@ def route(text, gui):
         result = _handle_pending_state(t)
         if result is not None:
             return result
-        _pending_state.clear()  # unrecognised response — abandon and route normally
+        _pending_state.clear()
 
     # ── Memory reset ─────────────────────────────────────────────────────────
     if "clear memory" in t or "forget everything" in t:
-        return clear_memory()
+        return clear_memory(user_id)
 
-    # ── Screen analysis (before help — "help me with homework" must hit here) ─
+    # ── Screen analysis ───────────────────────────────────────────────────────
     if any(w in t for w in SCREEN_WORDS):
         from vision import analyze_screen
         return analyze_screen(
@@ -192,6 +183,18 @@ def route(text, gui):
         gui.add_help_card(HELP_HTML)
         return "Here is a list of things I can help you with, Sir."
 
+    # ── Note deletion ─────────────────────────────────────────────────────────
+    if re.search(r"\bdelete\b.+\blast\b.+\bnote\b|\bdelete\b.+\bnote\b.+\blast\b", t):
+        return delete_last_note(user_id=user_id)
+    _del_cat = re.search(r"\bdelete\b.+?\b(my\s+)?(\w+)\s+notes?\b", t)
+    if _del_cat:
+        _cat = _del_cat.group(2)
+        if _cat not in {"all", "my", "the", "a"}:
+            return delete_notes(_cat, user_id=user_id)
+        return delete_notes(user_id=user_id)
+    if re.search(r"\bdelete\b.+\ball\b.+\bnotes?\b|\bdelete\b.+\bnotes?\b.+\ball\b", t):
+        return delete_notes(user_id=user_id)
+
     # ── Note taking (conversational — must come before handle_command) ────────
     if any(trigger in t for trigger in NOTE_TRIGGERS):
         note = re.sub(
@@ -199,7 +202,7 @@ def route(text, gui):
             "", t,
         ).strip()
         if note:
-            return _start_note_flow(note)
+            return _start_note_flow(note, user_id)
 
     # ── Weather ──────────────────────────────────────────────────────────────
     if "weather" in t:
@@ -215,7 +218,6 @@ def route(text, gui):
 
     # ── Stocks ───────────────────────────────────────────────────────────────
     if re.search(r"\bstock\b|\bshare price\b", t):
-        # Handle both "Tesla stock" and "stock Tesla" / "price of Tesla" orders
         m = re.search(r"([A-Za-z]{1,6})\s+(?:stock|share)", t) or \
             re.search(r"(?:stock|price of|how is)\s+([A-Za-z]{1,6})", t)
         if m:
@@ -226,23 +228,23 @@ def route(text, gui):
         if re.search(rf"\b{re.escape(keyword)}\b", t):
             return _crypto(coin_id)
 
-    # ── Spotify (tighter triggers so it doesn't hijack "play Tesla stock") ───
+    # ── Spotify ───────────────────────────────────────────────────────────────
     if any(w in t for w in SPOTIFY_WORDS):
         result = _spotify(text)
         if result:
             return result
 
-    # ── PC commands (time, volume, apps, notes read, etc.) ───────────────────
+    # ── PC commands ───────────────────────────────────────────────────────────
     result = handle_command(text)
     if result:
         return result
 
     # ── Fallback to AI brain ──────────────────────────────────────────────────
     gui.set_status("thinking")
-    return think(text)
+    return think(text, user_id=user_id)
 
 
-# Words that trigger sleep mode. Include STT spacing variants.
+# Words that trigger sleep mode.
 SLEEP_WORDS = (
     "sleep", "goodbye", "good bye", "goodnight", "good night",
     "that's all", "stand by", "standby", "go to sleep",
@@ -250,7 +252,7 @@ SLEEP_WORDS = (
 
 
 # ── Main voice loop ─────────────────────────────────────────────────────────
-def hades_loop(gui):
+def hades_loop(gui, user_id: str = None):
     if FACE_AUTH_ENABLED:
         gui.add_system_message("Face verification required...")
         from face_auth import verify_face
@@ -265,18 +267,16 @@ def hades_loop(gui):
     speak("Hades online. All systems nominal. Say my name to activate.")
     gui.add_system_message("All systems nominal. Waiting for activation.")
 
-    _sleeping = False  # distinguishes user-triggered sleep from initial standby
+    _sleeping = False
 
     while True:
         try:
-            # Set the correct idle status BEFORE blocking on the wake word.
-            # This ensures the GUI reflects the state while the mic is listening.
             if _sleeping:
                 gui.set_status("sleeping")
             else:
                 gui.set_status("standby")
 
-            wait_for_wake_word()  # mic stays open; ignores everything except "HADES"
+            wait_for_wake_word()
 
             if _sleeping:
                 _sleeping = False
@@ -313,7 +313,7 @@ def hades_loop(gui):
                 t = user_input.lower()
 
                 if any(w in t for w in SLEEP_WORDS):
-                    _pending_state.clear()  # abandon any in-progress action
+                    _pending_state.clear()
                     response = "Going to sleep, Sir. Call me when you need me."
                     speak(response)
                     gui.add_message("Hades", response)
@@ -321,7 +321,7 @@ def hades_loop(gui):
                     break
 
                 gui.set_status("thinking")
-                response = route(user_input, gui)
+                response = route(user_input, gui, user_id=user_id)
                 gui.set_status("speaking")
                 speak(response)
                 gui.add_message("Hades", response)
@@ -330,12 +330,26 @@ def hades_loop(gui):
             return
         except Exception as e:
             log.exception("Error in main loop: %s", e)
-            _sleeping = False  # reset on unexpected error so standby shows next
+            _sleeping = False
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     gui = HadesGUI()
+
+    # Resolved after auth (login or skip)
+    _user_id: list = [None]
+    _auth_event = threading.Event()
+
+    def _on_auth_complete(uid: str | None):
+        _user_id[0] = uid
+        _auth_event.set()
+        if uid:
+            gui.add_system_message(f"Authenticated. Session active.")
+        else:
+            gui.add_system_message("Running in local mode.")
+
+    gui.on_auth_complete = _on_auth_complete
 
     _text_state = {"sleeping": False}
 
@@ -344,7 +358,6 @@ if __name__ == "__main__":
             gui.add_message("You", text)
             t = text.lower()
 
-            # Wake from text-triggered sleep on any input
             if _text_state["sleeping"]:
                 _text_state["sleeping"] = False
                 gui.set_status("standby")
@@ -359,7 +372,7 @@ if __name__ == "__main__":
                 return
 
             gui.set_status("thinking")
-            response = route(text, gui)
+            response = route(text, gui, user_id=_user_id[0])
             gui.set_status("speaking")
             speak(response)
             gui.add_message("Hades", response)
@@ -369,5 +382,9 @@ if __name__ == "__main__":
 
     gui.on_text_command = handle_text_command
 
-    threading.Thread(target=hades_loop, args=(gui,), daemon=True).start()
+    def _start_after_auth():
+        _auth_event.wait()
+        hades_loop(gui, user_id=_user_id[0])
+
+    threading.Thread(target=_start_after_auth, daemon=True).start()
     gui.root.mainloop()

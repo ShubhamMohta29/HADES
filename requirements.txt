@@ -10,11 +10,17 @@ comtypes; platform_system == "Windows"
 python-dotenv
 spotipy
 opencv-python
-face_recognition
 Pillow
 google-generativeai
 pywebview
-piper-tts
+# piper-tts is NOT listed here — install.bat downloads the prebuilt Windows CLI binary
+# instead of the Python package, which requires Visual C++ to compile.
 sounddevice
+# face_recognition requires dlib which needs Visual C++ Build Tools.
+# Leave FACE_AUTH_ENABLED=false in .env (default) to skip it entirely.
+# To enable face auth: install C++ Build Tools, then: pip install face_recognition
 numpy
 soundfile
+# Supabase + semantic memory (optional — only needed if SUPABASE_URL is set)
+supabase
+sentence-transformers
