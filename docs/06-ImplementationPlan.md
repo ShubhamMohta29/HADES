@@ -152,22 +152,96 @@
 
 ---
 
-## Phase 12: Distribution (Future)
+## Phase 12: Distribution ✅
 **Goal**: Make it easy for others to install and run.
 
-- [ ] `setup.py` or `pyproject.toml` for pip-installable packaging
-- [ ] GitHub Releases with bundled Windows `.exe` (PyInstaller)
-- [ ] Auto-download Piper voice model on first run if not present
-- [ ] One-command install script (`install.bat`)
+- [x] `setup.py` for pip-installable packaging (`pip install -e .`; entry point `hades = main:main`)
+- [ ] GitHub Releases with bundled Windows `.exe` (PyInstaller) — deferred to post-v1.0
+- [x] Auto-download Piper voice model on first run if not present (`voice.py:_auto_download_piper()`)
+- [x] One-command install script (`install.bat` — creates venv, installs deps, downloads Piper binary + voice model, copies `.env.example`)
 
 ---
 
-## Done Criteria (v1 Shipped)
+## Phase 13: Supabase Cloud Memory & Auth ✅
+**Goal**: Cloud-synced multi-user memory with semantic search; user authentication.
 
-- [x] All Phase 1–10 items checked off
-- [ ] App starts cold in under 10 seconds
-- [ ] Wake word triggers reliably in a quiet room
-- [ ] All 8 command categories tested: AI chat, weather, news, stocks, crypto, Spotify, PC control, screen vision
-- [ ] No unhandled exceptions in a 30-minute voice session
+- [x] Create Supabase project; run `supabase_schema.sql` (pgvector, tables, RLS, `match_memory` function)
+- [x] Add `SUPABASE_URL` + `SUPABASE_ANON_KEY` to `.env` and `.env.example`
+- [x] Install `supabase` and `sentence-transformers` Python packages
+- [x] Write `db.py` — centralised Supabase client: `is_available()`, `embed()`, auth helpers, notes CRUD, memory read/write/search
+- [x] Add login UI to `gui.py` — login panel with email+password, magic link, skip; session persisted in `~/.jarvis/session.json`; silent restore on restart
+- [x] Refactor `brain.py` — two-tier memory: `load_recent(user_id, n=12)` + `retrieve_relevant(user_id, query, k=5)`; falls back to local JSON when Supabase absent
+- [x] Refactor `commands.py` — notes functions (`save_note`, `read_notes`, `get_existing_categories`, `delete_last_note`, `delete_notes`) all db-aware via `_use_db(user_id)` helper
+- [x] Thread `user_id` through `main.py` — `on_auth_complete` callback; `hades_loop()` and `handle_text_command()` both pass `user_id` to `route()`
+- [x] Add note deletion to `route()` — three regex branches (last note, by category, all notes) mapped to `commands.delete_last_note` / `commands.delete_notes`
+- [x] Write `run_once_migrate_notes.py` — one-time import of `notes.txt` into Supabase; preserves timestamps + category tags; renames file to `.bak`
+- [x] Write `smoke_test.py` — pre-flight API key validation for Groq, OpenWeatherMap, NewsAPI, Spotify, Supabase
+- [x] Write `supabase_schema.sql` — SQL file for Supabase SQL editor (tables, RLS, `match_memory` function)
+- [x] Remove `google-generativeai` from `requirements.txt` (unused since vision migrated to Groq in Session 001)
+- [x] Update `.gitignore` — add `face_encodings.pkl`, `notes.txt.bak`
+- [x] Full README rewrite — install.bat path, Supabase setup with schema.sql, smoke test, face registration, Piper auto-download
+
+**Done when**: Supabase-configured run stores messages and retrieves semantic matches; local-mode run works identically to pre-Supabase with flat files.
+
+---
+
+## Done Criteria (v0.x Shipped ✅)
+
+- [x] All Phase 1–13 items checked off
 - [x] `.env.example` documents every required key
 - [x] `README.md` covers install, setup, and first-run steps
+- [x] `smoke_test.py` validates all configured API keys
+- [x] `install.bat` one-command setup for Windows
+- [ ] App starts cold in under 10 seconds *(target for v1.0 with streaming)*
+- [ ] Wake word triggers reliably in a quiet room *(neural wake word — v1.0)*
+- [ ] No unhandled exceptions in a 30-minute voice session *(manual QA — ongoing)*
+- [ ] PyInstaller `.exe` bundle for distribution without Python *(v1.0)*
+
+**v1.0 goals** — see README Roadmap: continuous conversation, barge-in, streaming TTS, neural wake word, action confirmation gate.
+
+---
+
+## Phase 14: Neural Wake Word ⬜ (next)
+**Goal**: Replace fuzzy-STT wake word polling with a local neural acoustic model. Eliminates false triggers, reduces CPU load during standby, and is a prerequisite for the continuous conversation window (Phase 15).
+
+**Library**: [`openwakeword`](https://github.com/dscripka/openWakeWord) — free, local, no API key. Uses a small neural model (~1 MB) that runs on the mic stream without transcribing speech.
+
+- [ ] Add `openwakeword` to `requirements.txt`
+- [ ] Add `WAKE_MODEL` env var to `config.py` and `.env.example` — path to custom `.onnx` wake word model; defaults to the built-in "hey jarvis" or a HADES-trained model
+- [ ] Rewrite `voice.py:wait_for_wake_word()` — swap STT polling loop for `openwakeword.Model` streaming inference on raw mic audio; keep `WAKE_DEBOUNCE` logic; keep `listen_for_wake_word_once()` helper using the same model
+- [ ] Remove or demote the old fuzzy-STT fallback (keep as a `--no-neural` flag for debugging)
+- [ ] Test: reliable detection at 1m distance in quiet room; < 2 false triggers per hour of ambient speech
+
+**Done when**: "HADES" is detected consistently without false-triggering on "Hades" in a YouTube video playing in the background.
+
+---
+
+## Phase 15: Continuous Conversation ⬜ (next, after Phase 14)
+**Goal**: After HADES speaks its reply, keep the mic open for a follow-up window instead of returning to standby. User can ask "what about Tuesday?" without re-saying the wake word — this is the core JARVIS feel missing from the current loop.
+
+- [ ] Add `FOLLOWUP_TIMEOUT` env var to `config.py` and `.env.example` (default: `15` seconds)
+- [ ] Refactor `main.py:hades_loop()` inner loop — after `speak(response)`, instead of returning to `wait_for_wake_word()`, continue the `listen()` loop for up to `FOLLOWUP_TIMEOUT` seconds of silence before breaking back to standby
+- [ ] Display a "follow-up" orb sub-state in the GUI (listening state with a subtle countdown indicator or dimming effect) so the user knows the window is open
+- [ ] Exit the follow-up window on: explicit sleep word, `FOLLOWUP_TIMEOUT` seconds of consecutive silence, or `MIC_ERROR` streak
+- [ ] Handle text commands: `handle_text_command()` already works regardless of voice state; no change needed
+- [ ] Test: three consecutive follow-up questions work without re-waking; timeout returns to standby correctly; sleep word during follow-up window enters sleep (not standby)
+
+**Done when**: A 5-turn conversation ("HADES" → Q1 → A1 → Q2 → A2 → Q3 → A3 → silence → standby) completes without the user re-saying the wake word.
+
+---
+
+## Phase 16: Action Confirmation Gate ⬜ (after Phase 15)
+**Goal**: Destructive or irreversible actions require an explicit spoken or clicked confirmation before executing. This is a safety prerequisite before shipping calendar write and email send features (v1.5).
+
+**Actions requiring confirmation**: shutdown, restart, delete all notes, delete category notes, (future) send email, (future) create/delete calendar event.
+
+- [ ] Add `_confirm_pending` state to `_pending_state` dict in `main.py` — similar to the note-category flow; stores the deferred action callable + description
+- [ ] Add `_CONFIRM_WORDS` frozenset (e.g. "yes", "confirm", "do it", "go ahead") and `_DENY_WORDS` (e.g. "no", "cancel", "stop", "never mind") to `main.py`
+- [ ] Add `_handle_confirm_state(t)` in `main.py` — if `_confirm_pending` is active, check confirm/deny; on confirm, call the stored callable; on deny or ambiguous, cancel and say "Cancelled, Sir."
+- [ ] Wrap destructive commands in `commands.py` with a `requires_confirm` marker (simple dict or decorator) so `route()` can intercept them before execution
+- [ ] In `route()`: when a destructive command is matched, instead of calling it immediately, set `_confirm_pending` and return the confirmation prompt ("Are you sure you want to shut down, Sir?")
+- [ ] GUI: show the confirmation prompt in the chat + orb stays in THINKING state until resolved
+- [ ] Add `CONFIRM_TIMEOUT` env var (default: `10s`) — if no response within timeout, auto-cancel
+- [ ] Test: "shutdown" → "Are you sure?" → "yes" → shuts down; "shutdown" → "no" → "Cancelled, Sir."; timeout → auto-cancel
+
+**Done when**: All destructive commands require confirmation; confirmation state clears correctly on sleep word, timeout, and denial.

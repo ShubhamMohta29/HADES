@@ -1,86 +1,133 @@
 ================================================================================
 HADES — Human Assistance and Decision Engineering System
 Project Index & Status
-Last updated: 2026-05-19
+Last updated: 2026-06-02
 ================================================================================
 
 OVERVIEW
 --------
 HADES is a voice-first AI personal assistant for Windows. It runs as a local
-Python desktop app (pywebview GUI), uses Groq LLaMA 70B for conversation, Piper
-TTS for offline speech output, and Google STT for voice input. The UI is a
-sci-fi dark-themed animated orb interface.
+Python desktop app (pywebview GUI), uses Groq LLaMA 3.3 70B for conversation,
+Piper TTS for offline speech output, and Google STT for voice input. The UI is
+a sci-fi dark-themed animated orb. Optionally backed by Supabase for cloud
+memory, multi-user auth, and semantic search over conversation history.
 
 --------------------------------------------------------------------------------
-WHAT HAS BEEN BUILT (complete)
+WHAT HAS BEEN BUILT (complete — v0.x)
 --------------------------------------------------------------------------------
 
 [CORE]
-  - brain.py          Groq Llama 3.3 70B conversational AI with persistent
-                      conversation history (JSON), trimmed to 20 turns, thread-safe
-  - voice.py          Piper TTS (offline neural, British male voice) + fallback to
-                      CLI/print; Google STT via SpeechRecognition; configurable wake
-                      words (WAKE_WORDS env var) with per-word fuzzy STT-mishear
-                      variant sets; 2.5s debounce (WAKE_DEBOUNCE env var);
+  - brain.py          Groq Llama 3.3 70B conversational AI. Two memory paths:
+                        • Supabase (when user_id provided + Supabase configured):
+                          two-tier — last 12 messages (recency) + top 5
+                          semantically relevant past turns via pgvector cosine
+                          search (retrieve_relevant), using all-MiniLM-L6-v2
+                          embeddings. Messages persisted to conversation_memory
+                          table after every reply.
+                        • Local fallback: last 20 turns in
+                          conversation_history.json. Thread-safe lock. Trimmed
+                          and written to disk after every reply.
+                      think() and clear_memory() both accept optional user_id.
+  - voice.py          Piper TTS (offline neural, British male voice):
+                        • Python API path (piper.PiperVoice + sounddevice);
+                          CLI fallback (piper binary); print-only ultimate fallback
+                        • _auto_download_piper(): on first run, downloads
+                          en_GB-alan-medium.onnx + .onnx.json (~60 MB) from
+                          HuggingFace if missing at ./voices/ — no manual download
+                        • _speak_piper_api(): queries device native sample rate
+                          (sd.query_devices), resamples Piper 22050 Hz → device
+                          rate via np.interp, converts int16→float32 to eliminate
+                          Windows audio-driver stuttering
+                      Google STT via SpeechRecognition; configurable wake words
+                      (WAKE_WORDS env var) with per-word fuzzy STT-mishear variant
+                      sets; 2.5s debounce (WAKE_DEBOUNCE env var);
                       MIC_ERROR sentinel distinguishes mic failure from silence;
                       listen_for_wake_word_once() helper for sleep-mode checks;
-                      no per-call ambient-noise calibration in listen() (dynamic_energy
-                      _threshold handles it continuously); _speak_piper_api() resamples
-                      Piper's 22050 Hz output to the device's native rate (queried via
-                      sd.query_devices()) and converts int16→float32 before playback to
-                      eliminate Windows audio-driver stuttering
+                      no per-call ambient-noise calibration in listen() (dynamic
+                      _energy_threshold handles it continuously)
   - main.py           Full voice loop (standby → wake → listen → think → speak),
-                      true sleep mode (mic on but only wake word processed; orb dims),
-                      intent router (12-step priority chain), text command handler
-                      with sleep-word detection (_text_state flag sets orb to SLEEPING
-                      and skips standby reset; next text command wakes back to standby),
-                      _pending_state multi-turn state machine for conversational flows;
-                      zero-delay wake response (no artificial sleep between wake
-                      detection and "Yes, Sir?" — Piper synthesis begins immediately)
-  - config.py         .env loader for all API keys and settings flags, including
-                      WAKE_WORDS and WAKE_DEBOUNCE
+                      true sleep mode (mic on but only wake word processed; orb
+                      dims), 13-step intent router, text command handler with
+                      sleep-word detection, _pending_state multi-turn state
+                      machine. user_id threaded from auth callback through
+                      route() to every handler. on_auth_complete callback
+                      stores resolved user_id before voice loop starts.
+  - config.py         .env loader for all API keys, Supabase credentials, and
+                      settings flags (WAKE_WORDS, WAKE_DEBOUNCE, PIPER_MODEL,
+                      FACE_AUTH_ENABLED, SUPABASE_URL, SUPABASE_ANON_KEY)
+  - db.py             Centralised Supabase client (no other file imports supabase
+                      directly). Lazy-init client and embedder. Exposes:
+                        Auth: sign_in, sign_up, sign_in_magic_link,
+                              restore_session, sign_out
+                        Notes: add_note, get_notes, get_note_categories,
+                               delete_last_note_db, delete_notes_db
+                        Memory: save_message, load_recent, retrieve_relevant,
+                                clear_memory_db
+                        Util: is_available(), embed()
   - gui.py            pywebview window, Python↔JS bridge, status/message helpers,
-                      add_help_card() for the command reference panel
+                      add_help_card(); full auth flow: on load, checks
+                      ~/.jarvis/session.json for a valid token and restores the
+                      session silently; if not found, shows login panel; HadesAPI
+                      exposes login(), signup(), magic_link(), skipLogin();
+                      session written to ~/.jarvis/session.json on success.
 
 [FRONTEND]
-  - frontend/index.html   Single-page dark sci-fi UI — animated orb with 4 rotating
-                          rings + tick marks, 5-state status system (standby /
-                          sleeping / listening / thinking / speaking), scrollable
-                          chat log, text input bar, help card component (.help-card)
-                          with its own CSS and window.addHelpCard() JS function
+  - frontend/index.html   Single-page dark sci-fi UI — animated orb with 4
+                          rotating rings + tick marks, 5-state status system
+                          (standby / sleeping / listening / thinking / speaking),
+                          scrollable chat log, text input bar, help card
+                          component (.help-card), login panel (email + password
+                          form; magic link option; skip button for local mode)
 
 [COMMANDS]
-  - commands.py       Volume (set/up/down/mute via pycaw + pyautogui), time & date,
-                      battery, screenshot, clipboard read, shutdown/restart/lock,
-                      notes (save with optional category tag + read with category
-                      filter + get_existing_categories()), timed reminders, web
-                      search, app launcher (Chrome/VS Code/Notepad/Calculator/
-                      Explorer/Word/Excel), website opener (YouTube/GitHub/Gmail/
-                      Reddit/Twitter/Instagram/Netflix/LinkedIn), CPU/RAM/disk usage,
-                      HELP_HTML constant (full command reference card)
+  - commands.py       Volume (set/up/down/mute via pycaw + pyautogui), time &
+                      date, battery, screenshot, clipboard read,
+                      shutdown/restart/lock/cancel, notes (save with category +
+                      read with filter + get_existing_categories; all db-aware
+                      via _use_db(user_id) — falls back to notes.txt when no
+                      Supabase), note deletion (delete_last_note, delete_notes
+                      by category or all), timed reminders, web search, app
+                      launcher, website opener, CPU/RAM/disk, HELP_HTML constant
 
 [INTEGRATIONS]
   - weather.py        OpenWeatherMap — current weather by city
-  - news.py           NewsAPI — top headlines or topic-specific news (5 results)
+  - news.py           NewsAPI — top 5 headlines or topic-specific news
   - stocks.py         yfinance — live stock price; CoinGecko — crypto price
                       (BTC/ETH/SOL/DOGE/ADA/XRP)
   - spotify.py        Spotipy — play by query, pause/resume, skip, previous,
-                      shuffle, current track query; HTTP-status-aware error
-                      summarization (401/403/404/429/503 → clean spoken sentences)
+                      shuffle, current track; HTTP-status-aware error
+                      summarization (401/403/404/429/503)
   - vision.py         Screen capture (PIL.ImageGrab) → Groq Llama 4 Scout
-                      (multimodal) — analyzes screen on voice trigger; HADES
-                      persona system prompt instructs the model to describe the
-                      screenshot directly as HADES (never deny screen access,
-                      address user as Sir, no markdown, 2-3 sentences max)
+                      (meta-llama/llama-4-scout-17b-16e-instruct, multimodal);
+                      HADES persona system prompt; image resized to 1280px,
+                      base64 JPEG encoded; handles rate-limit errors
 
 [AUTH]
   - face_auth.py      Optional face verification gate (OpenCV + face_recognition)
-                      enabled via FACE_AUTH_ENABLED=true in .env
+                      enabled via FACE_AUTH_ENABLED=true in .env. Register face:
+                      python face_auth.py --register. Encodings stored in
+                      face_encodings.pkl (gitignored).
+
+[DISTRIBUTION]
+  - install.bat       One-command Windows installer: creates venv, pip install,
+                      downloads Piper CLI binary (no C++ Build Tools required),
+                      downloads en_GB-alan-medium voice model, copies .env.example
+                      → .env. All steps idempotent (skips if already present).
+  - setup.py          pip install -e . support; entry point `hades = main:main`
+  - supabase_schema.sql  SQL to run in Supabase SQL editor: creates notes and
+                      conversation_memory tables, RLS policies, match_memory()
+                      pgvector cosine-search function.
+  - run_once_migrate_notes.py  Imports existing notes.txt into Supabase (one-time
+                      migration); preserves timestamps + categories; renames
+                      notes.txt → notes.txt.bak on success.
+  - smoke_test.py     Pre-flight API key check: Groq / OpenWeatherMap / NewsAPI /
+                      Spotify / Supabase; PASS/FAIL/SKIP per key; exits 1 on
+                      any failure.
 
 [TESTS]
-  - tests/test_route.py   24 unit tests for main.py:route() — all 12 routing
+  - tests/test_route.py   24 unit tests for main.py:route() — all routing
                           branches covered, all dependencies mocked; runs with
-                          `pytest tests/` (no API keys, mic, or Piper model needed)
+                          `pytest tests/` (no API keys, mic, or Piper needed)
 
 [DOCS]
   - docs/01-PRD.md              Product Requirements Document
@@ -89,86 +136,111 @@ WHAT HAS BEEN BUILT (complete)
   - docs/04-UIUXDesignBrief.md  Visual & Interaction Design Guide
   - docs/05-BackendSchema.md    Data Model & Architecture
   - docs/06-ImplementationPlan.md  Step-by-Step Build Sequence
-  - docs/07-Supabase-Memory.md  Supabase + semantic memory migration plan
+  - docs/07-Supabase-Memory.md  Supabase + semantic memory (complete)
   - docs/index.txt              This file
   - docs/session_log.txt        Per-session changelog
 
 --------------------------------------------------------------------------------
-WHAT STILL NEEDS TO BE BUILT
+WHAT STILL NEEDS TO BE BUILT (v1.0+ roadmap)
 --------------------------------------------------------------------------------
 
-[MEMORY / BACKEND — Phase Supabase (doc 07)]
-  - Supabase project setup (pgvector, RLS, match_memory() SQL function)
-  - db.py — centralised Supabase client, embed(), save_message(), retrieve_relevant()
-  - Two-tier memory in brain.py — last 12 messages (recency) + top 5 semantically
-    relevant past turns (pgvector cosine search via sentence-transformers)
-  - User authentication — Supabase Auth sign-in flow in gui.py; session stored in
-    ~/.jarvis/session.json; user_id threaded through main.py router
-  - Migrate notes.txt → Supabase notes table (category column already aligned)
-  - Migrate conversation_history.json → conversation_memory table
+[v1.0 — NEXT UP (in active planning — Phases 14-16)]
 
-[UX / COMMANDS]
-  - "delete my last note" / "delete my [category] notes" command
+  PHASE 14 — Neural Wake Word (openWakeWord)
+    Replace the current fuzzy-STT polling loop with a lightweight neural
+    model that runs continuously on the mic stream. openWakeWord detects the
+    wake word acoustically without transcribing every utterance — far fewer
+    false triggers, lower CPU, and works even when ambient noise confuses STT.
+    Files: voice.py (wait_for_wake_word), requirements.txt, .env.example
+    Prerequisite for: Continuous Conversation (Phase 15)
 
-[TESTING]
-  - Smoke test script to verify all API keys are valid before first run
+  PHASE 15 — Continuous Conversation (hold-open window)
+    After HADES replies, keep the mic active for a configurable follow-up
+    window (default ~15s) before returning to standby. The user can ask
+    "what about next week?" without re-saying the wake word. A silence timeout
+    or sleep-word exits the window and returns to standby.
+    Files: main.py (hades_loop inner loop), config.py (FOLLOWUP_TIMEOUT env)
+    Depends on: Phase 14 (reliable wake detection before relaxing the loop)
 
-[DISTRIBUTION — Phase 12]
-  - Auto-download Piper voice model on first run if voices/ directory is empty
-  - One-command Windows install script (install.bat)
-  - Bundled .exe via PyInstaller for distribution without Python installed
-  - setup.py / pyproject.toml for pip-installable packaging
+  PHASE 16 — Action Confirmation Gate
+    Destructive or irreversible actions (shutdown, delete all notes, restart,
+    send message) require a spoken or clicked confirmation before execution.
+    HADES asks "Are you sure, Sir?" — "yes/confirm" proceeds; anything else
+    cancels. Prerequisite for safe calendar (write) and email (send) features.
+    Files: main.py (confirmation state machine), commands.py (gate decorators)
 
-[FUTURE / NICE-TO-HAVE]
-  - Calendar integration (Google Calendar read/create)
-  - Email reading (Gmail API)
-  - Smart home control (Philips Hue, etc.)
-  - Multi-language voice support
-  - Offline STT (replace Google STT with local Whisper)
-  - Custom wake word training (replace keyword detection with Porcupine)
-  - Hotkey trigger as alternative to voice wake (for silent environments)
-  - Plugin system for user-added skill modules
+[v1.0 — remaining items]
+  - Barge-in / interruptible speech: talk over HADES to stop or redirect
+  - Action log: reviewable history of what HADES did and when
+  - Untrusted-input handling: screen/web/email text treated as data only
+
+[v1.5 — "Life manager"]
+  - Google Calendar integration (read agenda, create/move events)
+  - Gmail assistant (triage, summarize, draft; sends only after confirmation)
+  - Morning/evening briefings (proactive digest: weather, calendar, headlines)
+  - File search ("find my resume", "open the budget spreadsheet")
+  - Routines/macros ("Good morning" → lights + brief + playlist)
+  - Timers, alarms, stopwatch by voice
+
+[v2.0 — "Anticipatory & extensible"]
+  - Proactive nudges (context-aware, rationed suggestions)
+  - Web research agent (search, open, summarize pages; multi-source answers)
+  - Document/PDF Q&A (local RAG)
+  - Skill/plugin system (drop-in user skills via skill.json + handler.py)
+  - Smart-home bridge (Home Assistant: lights, thermostat, scenes)
+  - Mobile companion (trigger HADES from phone on same network)
+
+[v2.5 — "Multi-modal & personal"]
+  - Webcam vision (object/scene awareness, OCR, document capture)
+  - Speaker identification (recognize who is speaking, load their profile)
+  - Adjustable persona (tone/verbosity/wit dial, multiple TTS voices)
+  - Translation (speak/translate between languages on the fly)
+  - Developer mode (explain/run snippets, git status, project Q&A)
 
 --------------------------------------------------------------------------------
 FILE MAP
 --------------------------------------------------------------------------------
 
-Jarvis/
-  main.py                       Entry point, voice loop, intent router, note state machine,
-                                text-input sleep handling (_text_state)
-  brain.py                      Groq LLM + conversation memory
-  voice.py                      Piper TTS + SpeechRecognition STT + wake word system
-  vision.py                     Screen capture + Groq multimodal vision
-  commands.py                   PC control, categorised notes, HELP_HTML
-  weather.py                    OpenWeatherMap integration
-  news.py                       NewsAPI integration
-  stocks.py                     Stock + crypto price lookups
-  spotify.py                    Spotify playback control + error summarization
-  face_auth.py                  Optional face auth gate
-  gui.py                        pywebview window + JS bridge (incl. add_help_card)
-  config.py                     .env loader (incl. WAKE_WORDS, WAKE_DEBOUNCE)
-  requirements.txt              All Python dependencies
-  .env                          API keys (not committed)
-  .env.example                  Template with all keys documented
+HADES/
+  main.py                 Entry point, voice loop, 13-step intent router,
+                          note state machine, text-input sleep handling,
+                          user_id threading from auth callback
+  brain.py                Groq LLM + two-tier memory (Supabase / local JSON)
+  db.py                   Supabase client, embeddings, auth, notes, memory
+  voice.py                Piper TTS + auto-download + SpeechRecognition STT
+                          + wake word system + MIC_ERROR sentinel
+  vision.py               Screen capture + Groq Llama 4 Scout multimodal
+  commands.py             PC control, categorised notes + deletion, HELP_HTML
+  weather.py              OpenWeatherMap integration
+  news.py                 NewsAPI integration
+  stocks.py               Stock + crypto price lookups
+  spotify.py              Spotify playback control + error summarization
+  face_auth.py            Optional face auth gate (register + verify)
+  gui.py                  pywebview window + JS bridge + auth flow
+  config.py               .env loader (all keys, Supabase, wake word settings)
+  supabase_schema.sql     Supabase SQL: tables, RLS, match_memory() function
+  run_once_migrate_notes.py  One-time notes.txt → Supabase migration
+  smoke_test.py           Pre-flight API key validation
+  install.bat             Windows one-command installer
+  setup.py                pip install -e . packaging
+  requirements.txt        All Python dependencies
+  .env                    API keys (not committed)
+  .env.example            Template with all keys documented
   frontend/
-    index.html                  Full sci-fi UI — orb, chat, help card component
+    index.html            Full sci-fi UI — orb, chat, login panel, help card
   voices/
-    en_GB-alan-medium.onnx      Piper TTS voice model (not committed, ~60 MB)
-    en_GB-alan-medium.onnx.json Piper voice config (not committed)
+    en_GB-alan-medium.onnx      Piper TTS voice model (gitignored, auto-downloaded)
+    en_GB-alan-medium.onnx.json Piper voice config (gitignored, auto-downloaded)
   tests/
-    test_route.py               24 unit tests for route() (pytest)
+    test_route.py         24 unit tests for route() (pytest)
   docs/
-    01-PRD.md
-    02-TRD.md
-    03-AppFlow.md
-    04-UIUXDesignBrief.md
-    05-BackendSchema.md
-    06-ImplementationPlan.md
-    07-Supabase-Memory.md
-    index.txt                   This file
-    session_log.txt             Per-session changelog
-  conversation_history.json     Auto-generated; not committed
-  notes.txt                     Format: [timestamp] [category?] text; not committed
+    01-PRD.md · 02-TRD.md · 03-AppFlow.md · 04-UIUXDesignBrief.md
+    05-BackendSchema.md · 06-ImplementationPlan.md · 07-Supabase-Memory.md
+    index.txt             This file
+    session_log.txt       Per-session changelog
+  conversation_history.json  Local memory fallback (auto-generated; gitignored)
+  notes.txt                  Local notes fallback (gitignored)
+  face_encodings.pkl         Face auth biometric data (gitignored)
 
 --------------------------------------------------------------------------------
 KNOWN ISSUES / BUGS
@@ -176,13 +248,17 @@ KNOWN ISSUES / BUGS
 
   - None currently documented. File bugs here as discovered.
 
-  FIXED THIS SESSION
-  - Audio stuttering during Piper TTS playback: caused by sample-rate mismatch
-    (Piper 22050 Hz vs Windows device 44100/48000 Hz) and int16 type mismatch.
-    Fixed in voice.py _speak_piper_api() via device-rate query + resampling +
-    int16→float32 conversion.
-  - ~1 second delay between wake word detection and "Yes, Sir?" response: caused
-    by an unconditional time.sleep(0.3) before Piper synthesis. Removed from
-    hades_loop() in main.py; synthesis now starts immediately after wake.
+  FIXED (Session 007)
+  - Audio stuttering during Piper TTS playback: sample-rate mismatch (Piper
+    22050 Hz vs Windows device 44100/48000 Hz). Fixed via device-rate query +
+    np.interp resampling + int16→float32 conversion in _speak_piper_api().
+  - ~1 second delay between wake word detection and "Yes, Sir?": caused by an
+    unconditional time.sleep(0.3). Removed; synthesis begins immediately.
+
+  FIXED (Session 006)
+  - Sleep via text input not updating the UI orb state. Fixed with _text_state
+    closure dict and early return in handle_text_command().
+  - Vision responses sounding generic (not HADES). Fixed with HADES persona
+    system prompt in vision.py Groq API call.
 
 ================================================================================

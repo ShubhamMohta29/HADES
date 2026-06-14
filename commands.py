@@ -30,8 +30,10 @@ except ImportError:
 def set_volume(level):
     if not PYCAW_AVAILABLE:
         return "pycaw not installed (or not on Windows), Sir."
-    devices = AudioUtilities.GetSpeakers()
-    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+    speakers = AudioUtilities.GetSpeakers()
+    # Newer pycaw wraps the COM device in an AudioDevice object; unwrap it.
+    dev = getattr(speakers, '_dev', speakers)
+    interface = dev.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
     volume = cast(interface, POINTER(IAudioEndpointVolume))
     volume.SetMasterVolumeLevelScalar(level / 100, None)
 

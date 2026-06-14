@@ -10,6 +10,116 @@ Format:
   NEXT        What to pick up next session
 
 --------------------------------------------------------------------------------
+SESSION 008 — 2026-06-02
+--------------------------------------------------------------------------------
+WHAT
+  Shipped all items that had been queued as "NEXT" since Session 005.
+  Major milestone: Supabase cloud memory + multi-user auth fully live.
+  Phase 12 (distribution) also complete. Project is feature-complete for v0.x.
+
+  SUPABASE CLOUD MEMORY + AUTH (doc 07 — all phases complete)
+  - db.py (new): centralised Supabase client. Exposes is_available(), get_client(),
+    embed() (sentence-transformers all-MiniLM-L6-v2, 384-dim), sign_in/sign_up/
+    sign_in_magic_link/restore_session/sign_out (auth), add_note/get_notes/
+    get_note_categories/delete_last_note_db/delete_notes_db (notes),
+    save_message/load_recent/retrieve_relevant/clear_memory_db (memory).
+    No other file imports `supabase` directly.
+  - brain.py: two-tier memory path when Supabase is active — last 12 messages
+    (recency) + top 5 semantically relevant past turns via pgvector cosine search
+    (retrieve_relevant). Falls back to local JSON (last 20 turns) when Supabase
+    is not configured. think() and clear_memory() both accept optional user_id.
+  - gui.py: login panel wired into pywebview. On load, checks
+    ~/.jarvis/session.json for a valid token (restore_session); if found, fires
+    on_auth_complete(user_id) silently; if not, shows login form. HadesAPI
+    exposes login(email, password), signup(email, password), magic_link(email),
+    skipLogin(). Session written to ~/.jarvis/session.json on successful sign-in.
+  - main.py: on_auth_complete callback stores user_id; hades_loop() and
+    handle_text_command() both pass user_id through route() to every handler.
+
+  NOTE DELETION
+  - commands.py: delete_last_note(user_id) removes the most recent note
+    (Supabase or flat-file); delete_notes(category, user_id) deletes all notes
+    in a category, or all notes if category is None.
+  - main.py route(): two new regex branches before note-taking — "delete last
+    note" and "delete [category] notes" — mapped to the above functions.
+  - commands.py HELP_HTML: updated to include delete commands in UTILITIES section.
+
+  PHASE 12 — DISTRIBUTION (all complete)
+  - install.bat (new): one-command Windows installer. Creates venv, runs pip
+    install, downloads Piper CLI binary (no C++ required) from GitHub Releases,
+    downloads en_GB-alan-medium.onnx + .onnx.json voice model from HuggingFace,
+    copies .env.example → .env. All steps are idempotent (skips if already done).
+  - setup.py (new): pip install -e . support; entry point `hades = main:main`.
+  - voice.py: _auto_download_piper() added — on first speak() call, if model is
+    missing at the default ./voices/ path, downloads both .onnx + .onnx.json from
+    HuggingFace automatically. Only triggers for the default model path; custom
+    PIPER_MODEL paths are not auto-downloaded.
+
+  PRE-FLIGHT SMOKE TEST
+  - smoke_test.py (new): checks Groq, OpenWeatherMap, NewsAPI, Spotify, and
+    Supabase keys. Prints PASS / FAIL / SKIP per key; exits 0 if all pass, 1 if
+    any fail. Skips keys not set in .env. No mic, Piper, or UI required.
+
+  SUPABASE SCHEMA FILE
+  - supabase_schema.sql (new): SQL to run in the Supabase SQL editor to create
+    notes + conversation_memory tables, enable RLS with per-user policies, and
+    define the match_memory() pgvector cosine-search function.
+
+  NOTES MIGRATION SCRIPT
+  - run_once_migrate_notes.py (new): reads existing notes.txt, preserves
+    timestamps + category tags, inserts each note into the Supabase notes table,
+    then renames notes.txt → notes.txt.bak. Safe to re-run; checks for file
+    existence. User is prompted to provide their Supabase user UUID.
+
+  CLEANUP
+  - requirements.txt: removed google-generativeai (vision migrated to Groq in
+    Session 001; dependency was never removed).
+  - .gitignore: added face_encodings.pkl (biometric data) and notes.txt.bak.
+  - README.md: full rewrite of Setup section (install.bat, Supabase schema,
+    face registration, smoke test, Piper auto-download note); tech stack and
+    project structure updated; voice commands table expanded.
+  - All docs (01–07, index.txt) updated to reflect current state.
+
+FILES CREATED
+  db.py
+  install.bat
+  setup.py
+  smoke_test.py
+  supabase_schema.sql
+  run_once_migrate_notes.py
+
+FILES MODIFIED
+  brain.py            Two-tier memory, user_id param, Supabase path
+  commands.py         delete_last_note, delete_notes, _use_db helper,
+                      db-aware save_note/read_notes/get_existing_categories,
+                      HELP_HTML delete commands added
+  gui.py              Login panel, auth flow, session persistence
+  main.py             user_id threading, delete-note route branches
+  voice.py            _auto_download_piper() on first run
+  config.py           SUPABASE_URL, SUPABASE_ANON_KEY constants
+  requirements.txt    Removed google-generativeai
+  .gitignore          face_encodings.pkl, notes.txt.bak
+  .env.example        SUPABASE_URL, SUPABASE_ANON_KEY entries
+  README.md           Comprehensive update (see above)
+  docs/index.txt      Full rebuild — all Supabase/distribution items moved to built
+  docs/session_log.txt  This entry
+  docs/01-PRD.md      Scope, features, user stories updated
+  docs/02-TRD.md      Libraries, APIs, folder structure, env vars updated
+  docs/03-AppFlow.md  Auth flow, delete-note flow, Supabase errors added
+  docs/04-UIUXDesignBrief.md  Login panel component spec added
+  docs/05-BackendSchema.md    Supabase schema, db.py module, routing, auth updated
+  docs/06-ImplementationPlan.md  Phase 12 complete; Phase 13 (Supabase) added + complete
+  docs/07-Supabase-Memory.md  All implementation phases marked complete
+
+NEXT
+  v0.x is feature-complete. See README Roadmap for v1.0+ plans:
+    - Continuous conversation (hold-open window after response)
+    - Barge-in / interruptible speech
+    - Streaming TTS responses
+    - Neural wake word (openWakeWord / Porcupine)
+    - Action confirmation gate for destructive commands
+
+--------------------------------------------------------------------------------
 SESSION 007 — 2026-05-19
 --------------------------------------------------------------------------------
 WHAT

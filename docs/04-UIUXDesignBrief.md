@@ -85,6 +85,30 @@ Dark mode only. No light mode variant. The aesthetic depends entirely on dark ba
 
 ---
 
+## Login Panel Component
+
+Rendered inside the same pywebview window (overlay or dedicated section). Shown only when Supabase is configured and no valid session token is found. Hidden (not destroyed) after auth completes.
+
+**Visual design** (consistent with overall aesthetic):
+- Dark background, same `#020408` as the window — no modal backdrop
+- Title: `IDENTIFY YOURSELF` in titlebar style (10px, letter-spacing 2px, all-caps, dim color)
+- Input fields: same styling as the main text input — full-width, `var(--cyan-deep)` border, `var(--cyan)` on focus
+- Primary button `AUTHENTICATE`: cyan border + text, glow on hover — same pattern as SEND button
+- Secondary button `MAGIC LINK`: dim styling (dim border, dim text) — lower visual weight
+- Tertiary link `SKIP — LOCAL MODE`: plain text link in dim color at the bottom, smallest visual weight
+- No error icons — error messages are text-only, amber (`var(--user)`) to stand out without feeling alarming
+
+**Interaction states**:
+- Default: empty fields, all buttons enabled
+- Submitting: buttons disabled; brief "Authenticating..." system message in chat area
+- Success: panel fades out; `addSystemMessage("Authenticated. Session active.")` appears in chat
+- Error: amber error text appears below the form (e.g. "Invalid email or password, Sir.")
+- Skip: panel hides immediately; `addSystemMessage("Running in local mode.")` appears in chat
+
+**When Supabase is not configured**: login panel never appears — `on_auth_complete(None)` fires automatically and HADES starts in local mode without showing the panel.
+
+---
+
 ## Help Card Component (`.help-card`)
 
 Triggered by saying or typing "help" / "commands". Rendered inside the chat log via `window.addHelpCard(html)`.

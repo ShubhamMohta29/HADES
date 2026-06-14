@@ -1,5 +1,6 @@
-# 07 — Supabase & Semantic Memory Plan
+# 07 — Supabase & Semantic Memory
 ## Multi-User Data Isolation + Two-Tier Persistent Memory
+## Status: **COMPLETE** — all phases shipped (Session 008, 2026-06-02)
 
 ---
 
@@ -194,117 +195,23 @@ The anon key is safe to ship — RLS ensures it can only access data the authent
 
 ## 6. Code Changes
 
-### 6.1 New file: `db.py`
+### 6.1 `db.py` (shipped)
 
-Centralises all Supabase interaction. No other file should import `supabase` directly.
+Centralises all Supabase interaction. No other file imports `supabase` directly. See `db.py` for the full implementation. Key additions beyond the original plan:
 
-```python
-from supabase import create_client
-from sentence_transformers import SentenceTransformer
-from config import SUPABASE_URL, SUPABASE_ANON_KEY
+- `is_available()` — guards all Supabase paths; returns `False` when env vars absent
+- Auth helpers: `sign_in`, `sign_up`, `sign_in_magic_link`, `restore_session`, `sign_out`
+- Notes: `get_note_categories`, `delete_last_note_db`, `delete_notes_db` (additions)
+- Memory: `load_recent`, `clear_memory_db` (additions)
+- Lazy init for both client and embedder (avoids import-time cost)
 
-_client = None
-_embedder = SentenceTransformer("all-MiniLM-L6-v2")
+### 6.2 `brain.py` changes (shipped)
 
-def get_client():
-    global _client
-    if _client is None:
-        _client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    return _client
+`think()` accepts an optional `user_id`. When `user_id` is present and Supabase is available, the two-tier path is used: `db.load_recent(user_id, n=12)` + `db.retrieve_relevant(user_id, query, k=5)` → injected as a "Relevant past context" block in the system prompt. Falls back to local JSON otherwise. See `brain.py` for the full implementation.
 
-def embed(text: str) -> list[float]:
-    return _embedder.encode(text, normalize_embeddings=True).tolist()
+### 6.3 `commands.py` changes (shipped)
 
-# --- Notes ---
-
-def add_note(user_id: str, content: str, category: str = None):
-    get_client().table("notes").insert({
-        "user_id": user_id,
-        "content": content,
-        "category": category,
-    }).execute()
-
-def get_notes(user_id: str, category: str = None) -> list[dict]:
-    q = get_client().table("notes").select("*").eq("user_id", user_id)
-    if category:
-        q = q.eq("category", category)
-    return q.order("created_at", desc=True).execute().data
-
-# --- Memory ---
-
-def save_message(user_id: str, role: str, content: str):
-    vector = embed(content)
-    get_client().table("conversation_memory").insert({
-        "user_id": user_id,
-        "role": role,
-        "content": content,
-        "embedding": vector,
-    }).execute()
-
-def retrieve_relevant(user_id: str, query: str, k: int = 5) -> list[dict]:
-    vector = embed(query)
-    result = get_client().rpc("match_memory", {
-        "query_embedding": vector,
-        "match_user_id": user_id,
-        "match_count": k,
-        "match_threshold": 0.5,
-    }).execute()
-    return result.data
-```
-
-### 6.2 `brain.py` changes
-
-Replace the JSON file read/write with Supabase calls. The prompt construction becomes:
-
-```python
-def build_prompt(user_id: str, user_message: str, recent_history: list) -> list:
-    # Long-term: semantically relevant past turns
-    relevant = retrieve_relevant(user_id, user_message, k=5)
-    memory_block = "\n".join(
-        f"[Past {r['role']}]: {r['content']}" for r in relevant
-    )
-
-    system = get_system_prompt()
-    if memory_block:
-        system += f"\n\n--- Relevant past context ---\n{memory_block}"
-
-    return [{"role": "system", "content": system}] + recent_history + [
-        {"role": "user", "content": user_message}
-    ]
-
-def think(user_id: str, user_message: str) -> str:
-    with history_lock:
-        recent = load_recent(user_id, n=12)   # last 12 messages from Supabase
-
-    messages = build_prompt(user_id, user_message, recent)
-    response = groq_client.chat.completions.create(
-        model=MODEL, messages=messages
-    ).choices[0].message.content
-
-    save_message(user_id, "user", user_message)
-    save_message(user_id, "assistant", response)
-
-    return response
-```
-
-`load_recent()` queries `conversation_memory` ordered by `created_at DESC LIMIT 12` for the given `user_id`, then reverses the result for chronological order.
-
-### 6.3 `commands.py` changes
-
-Replace `notes.txt` append/read with `db.add_note()` and `db.get_notes()`.
-
-```python
-# Before
-def save_note(text):
-    with open("notes.txt", "a") as f:
-        f.write(f"[{datetime.now():%Y-%m-%d %H:%M}] {text}\n")
-
-# After
-def save_note(user_id: str, text: str, category: str = None):
-    db.add_note(user_id, text, category)
-```
-
-The `user_id` flows in from the authenticated session stored in `main.py` at startup.
+All notes functions now accept `user_id` and call `_use_db(user_id)` to decide path. Additions beyond the original plan: `delete_last_note(user_id)` and `delete_notes(category, user_id)` — both db-aware. See `commands.py` for the full implementation.
 
 ---
 
@@ -318,47 +225,28 @@ The `user_id` flows in from the authenticated session stored in `main.py` at sta
 
 > **Note**: `notes.txt` lines now carry an optional category tag: `[YYYY-MM-DD HH:MM] [category] content`. The migration script below reads and preserves this tag into the `category` column.
 
-### One-time notes import script
+### One-time notes import script (shipped)
 
-```python
-# run_once_migrate_notes.py
-from db import get_client, embed
-import re
-
-user_id = input("Your user_id: ")
-
-with open("notes.txt") as f:
-    for line in f:
-        # Format: [timestamp] [category?] content
-        m = re.match(r"\[(.+?)\]\s*(?:\[([a-zA-Z]+)\]\s*)?(.+)", line.strip())
-        if m:
-            timestamp, category, content = m.groups()
-            get_client().table("notes").insert({
-                "user_id": user_id,
-                "content": content.strip(),
-                "category": category,           # None if no tag
-                "created_at": timestamp,
-            }).execute()
-
-print("Migration complete.")
-```
+`run_once_migrate_notes.py` — prompts for user UUID, reads `notes.txt`, inserts each note into Supabase with timestamp + category preserved, renames `notes.txt` → `notes.txt.bak`. Safe to re-run; checks for file existence first. See the file for full implementation.
 
 ---
 
 ## 8. Implementation Phases
 
-| Phase | Task | Files touched |
-|---|---|---|
-| 8.1 | Create Supabase project, run SQL from §3 | Supabase dashboard |
-| 8.2 | Add `SUPABASE_URL`, `SUPABASE_ANON_KEY` to `.env` + `.env.example` | `.env`, `.env.example` |
-| 8.3 | Install `supabase` and `sentence-transformers` Python packages | `requirements.txt` |
-| 8.4 | Write `db.py` (§6.1) | new file |
-| 8.5 | Add login UI to `gui.py`; store session in `~/.jarvis/session.json` | `gui.py` |
-| 8.6 | Refactor `brain.py` to use two-tier memory (§6.2) | `brain.py` |
-| 8.7 | Refactor `commands.py` notes functions to use `db.py` (§6.3) | `commands.py` |
-| 8.8 | Thread `user_id` through `main.py` intent router | `main.py` |
-| 8.9 | Run migration script for existing `notes.txt` | `run_once_migrate_notes.py` |
-| 8.10 | Delete `conversation_history.json` and `notes.txt` from repo | repo cleanup |
+| Phase | Task | Status | Files touched |
+|---|---|---|---|
+| 8.1 | Create Supabase project, run `supabase_schema.sql` | ✅ | Supabase dashboard + `supabase_schema.sql` (new) |
+| 8.2 | Add `SUPABASE_URL`, `SUPABASE_ANON_KEY` to `.env` + `.env.example` | ✅ | `.env`, `.env.example` |
+| 8.3 | Install `supabase` and `sentence-transformers` Python packages | ✅ | `requirements.txt` |
+| 8.4 | Write `db.py` | ✅ | new file |
+| 8.5 | Add login UI to `gui.py`; store session in `~/.jarvis/session.json` | ✅ | `gui.py` |
+| 8.6 | Refactor `brain.py` to use two-tier memory | ✅ | `brain.py` |
+| 8.7 | Refactor `commands.py` notes functions to use `db.py` | ✅ | `commands.py` |
+| 8.8 | Thread `user_id` through `main.py` intent router | ✅ | `main.py` |
+| 8.9 | Write migration script for existing `notes.txt` | ✅ | `run_once_migrate_notes.py` (new) |
+| 8.10 | `conversation_history.json` and `notes.txt` kept as local fallback | ✅ (kept) | gitignored; both paths coexist |
+
+> Note: 8.10 was originally "delete local files" but the correct design keeps them as the fallback path for users who do not configure Supabase. The `_use_db(user_id)` helper in `commands.py` and the `use_supabase` flag in `brain.py:think()` select the active path at runtime.
 
 ---
 
