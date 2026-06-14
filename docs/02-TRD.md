@@ -10,7 +10,7 @@
 - **Python 3.10+** — single-process application
 - `main.py` runs the voice loop on a daemon thread; GUI runs on the main thread
 - Module architecture: `brain`, `db`, `voice/` (tts, stt, wake), `commands/` (system, notes, help), `services/` (weather, news, stocks, spotify), `vision`, `face_auth`, `config`, `gui`
-- Intent routing in `router.py:route()` — regex + keyword matching, 13-step priority chain, falls back to Groq LLM; `main.py` is the entry point and voice loop only
+- Intent routing in `router.py:route()` — Strategy pattern dispatcher: 11 `_Handler` subclasses, each owning one intent; `route()` iterates `_HANDLERS` and delegates to the first match; falls back to Groq LLM; adding a new intent never modifies `route()` (OCP); `main.py` is the entry point and voice loop only
 
 ## AI / LLM
 - **Groq API** — Llama 3.3 70B Versatile for conversational AI (`brain.py`)
@@ -97,7 +97,7 @@ HADES/
 │
 ├── commands/
 │   ├── __init__.py            # re-exports all public names
-│   ├── system.py              # handle_command(): volume, apps, power, time, battery, reminders, web
+│   ├── system.py              # Strategy pattern dispatcher: 12 _CommandHandler subclasses; handle_command() = 6-line dispatcher; cancel-shutdown bug fixed
 │   ├── notes.py               # save_note, read_notes, delete_last_note, delete_notes, get_existing_categories
 │   └── help.py                # HELP_HTML constant
 │

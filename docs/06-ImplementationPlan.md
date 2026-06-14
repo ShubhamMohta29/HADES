@@ -115,7 +115,7 @@
 ## Phase 9: Intent Router & Main Loop ✅
 **Goal**: Full voice loop with correct priority routing.
 
-- [x] `main.py:route()` — priority chain: memory reset → screen → weather → news → stocks → crypto → Spotify → PC commands → LLM fallback
+- [x] `router.py:route()` — priority chain: memory reset → screen → weather → news → stocks → crypto → Spotify → PC commands → LLM fallback *(later refactored to Strategy pattern — see Phase 13.5)*
 - [x] `main.py:hades_loop()` — outer standby loop + inner listening loop
 - [x] GUI status updates at each stage (listening → thinking → speaking → standby)
 - [x] "sleep"/"goodbye"/"stand by" exits inner loop back to wake word detection
@@ -171,7 +171,7 @@
 - [x] Write `db.py` — centralised Supabase client: `is_available()`, `embed()`, auth helpers, notes CRUD, memory read/write/search
 - [x] Add login UI to `gui.py` — login panel with email+password, magic link, skip; session persisted in `~/.jarvis/session.json`; silent restore on restart
 - [x] Refactor `brain.py` — two-tier memory: `load_recent(user_id, n=12)` + `retrieve_relevant(user_id, query, k=5)`; falls back to local JSON when Supabase absent
-- [x] Refactor `commands.py` — notes functions (`save_note`, `read_notes`, `get_existing_categories`, `delete_last_note`, `delete_notes`) all db-aware via `_use_db(user_id)` helper
+- [x] Refactor `commands/notes.py` — notes functions (`save_note`, `read_notes`, `get_existing_categories`, `delete_last_note`, `delete_notes`) all db-aware via `_use_db(user_id)` helper
 - [x] Thread `user_id` through `main.py` — `on_auth_complete` callback; `hades_loop()` and `handle_text_command()` both pass `user_id` to `route()`
 - [x] Add note deletion to `route()` — three regex branches (last note, by category, all notes) mapped to `commands.delete_last_note` / `commands.delete_notes`
 - [x] Write `run_once_migrate_notes.py` — one-time import of `notes.txt` into Supabase; preserves timestamps + category tags; renames file to `.bak`
@@ -182,6 +182,28 @@
 - [x] Full README rewrite — install.bat path, Supabase setup with schema.sql, smoke test, face registration, Piper auto-download
 
 **Done when**: Supabase-configured run stores messages and retrieves semantic matches; local-mode run works identically to pre-Supabase with flat files.
+
+---
+
+## Phase 13.5: Architectural Refactor — Package Restructure + Strategy Pattern ✅
+**Goal**: Apply SOLID principles (SRP, OCP) and the Strategy design pattern (GoF §12.3.1) to eliminate monolithic if-elif chains and prepare the codebase for extensibility.
+
+**Session 010 — Package restructure** (SRP):
+- [x] Split flat `voice.py` → `voice/` package (`tts.py`, `stt.py`, `wake.py`, `__init__.py`)
+- [x] Split flat `commands.py` → `commands/` package (`system.py`, `notes.py`, `help.py`, `__init__.py`)
+- [x] Move service modules into `services/` package (`weather.py`, `news.py`, `stocks.py`, `spotify.py`)
+- [x] Extract intent routing from `main.py` into a standalone `router.py`
+- [x] Delete stale flat files: `commands.py`, `voice.py`, `weather.py`, `news.py`, `stocks.py`, `spotify.py`
+- [x] All 24 existing tests pass with zero changes
+
+**Session 011 — Strategy pattern** (OCP):
+- [x] Rewrite `router.py` — 70-line if-elif in `route()` replaced by 11 `_Handler` subclasses + `_HANDLERS` registry; `route()` reduced to a 10-line dispatcher loop
+- [x] Rewrite `commands/system.py` — 112-line if-elif in `handle_command()` replaced by 12 `_CommandHandler` subclasses + `_COMMAND_HANDLERS` registry; `handle_command()` = 6-line dispatcher
+- [x] Fix pre-existing cancel-shutdown bug: "cancel shutdown" was unreachable because "shutdown" matched first; fixed by checking "cancel shutdown" before "shutdown" in `_PowerHandler.handle()`
+- [x] Pre-compile handler regexes at class-definition time (not per-call)
+- [x] All 24 tests pass with zero changes — handler methods resolve module-level names at call time, preserving all `patch("router.xxx")` patches
+
+**Done when**: `pytest tests/` passes 24/24; `route()` and `handle_command()` are each ≤ 10 lines; adding a new intent or command requires only a new subclass + list append, not modifying the dispatcher.
 
 ---
 
