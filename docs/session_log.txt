@@ -10,6 +10,54 @@ Format:
   NEXT        What to pick up next session
 
 --------------------------------------------------------------------------------
+SESSION 011 — 2026-06-14
+--------------------------------------------------------------------------------
+WHAT
+  Applied SOLID principles and Strategy design pattern (from CSC207 Architecture
+  document) to router.py and commands/system.py. No behaviour changes; all 24
+  tests pass unchanged.
+
+  ROUTER.PY — Strategy pattern (OCP + SRP)
+  - The monolithic 70-line if-elif chain in route() violated the Open/Closed
+    Principle: every new intent required modifying route() directly.
+  - Each intent is now a _Handler subclass with can_handle() + handle() methods:
+      _ClearMemoryHandler, _ScreenHandler, _HelpHandler, _DeleteNoteHandler,
+      _NoteHandler, _WeatherHandler, _NewsHandler, _StockHandler,
+      _CryptoHandler, _SpotifyHandler, _PCCommandHandler, _BrainFallback
+  - _HANDLERS list defines priority order; _FALLBACK is the LLM.
+  - route() is now a 10-line dispatcher loop — it never changes when new intents
+    are added; extend by appending to _HANDLERS.
+  - Pre-compiled regex patterns (e.g. _DeleteNoteHandler._LAST/_CAT/_ALL,
+    _StockHandler._PATTERN) moved to class level — compiled once, not per call.
+
+  COMMANDS/SYSTEM.PY — Strategy pattern (OCP + SRP)
+  - The monolithic 187-line handle_command() had 12 separate command concerns
+    in one function — 12 reasons to change (SRP violation).
+  - Each command type is now a _CommandHandler subclass:
+      _VolumeHandler, _TimeHandler, _BatteryHandler, _ScreenshotHandler,
+      _ClipboardHandler, _PowerHandler, _NotesReadHandler, _ReminderHandler,
+      _WebSearchHandler, _WebsiteHandler, _AppHandler, _SystemInfoHandler
+  - handle_command() is now a 6-line dispatcher loop — same OCP guarantee.
+
+  BUG FIX — CANCEL SHUTDOWN (pre-existing)
+  - Original handle_command() checked "shutdown" before "cancel shutdown".
+    "cancel shutdown" contains "shutdown", so it would initiate a shutdown and
+    return, never reaching the cancel branch — the cancel command was broken.
+  - _PowerHandler.handle() now checks "cancel shutdown" first. Fixed.
+
+FILES MODIFIED
+  router.py             Rewritten: Strategy pattern; _Handler base class + 11
+                        concrete handlers; _HANDLERS registry; route() = 10 lines
+  commands/system.py    Rewritten: Strategy pattern; _CommandHandler base class +
+                        12 concrete handlers; _COMMAND_HANDLERS registry;
+                        handle_command() = 6 lines; cancel-shutdown bug fixed
+
+NEXT
+  - Phase 14 — Neural Wake Word (openWakeWord): rewrite voice/wake.py
+  - Phase 15 — Continuous Conversation
+  - Phase 16 — Action Confirmation Gate
+
+--------------------------------------------------------------------------------
 SESSION 010 — 2026-06-14
 --------------------------------------------------------------------------------
 WHAT

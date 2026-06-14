@@ -1,4 +1,9 @@
-"""Intent router — maps user text to the right handler and manages multi-turn state."""
+"""Intent router — maps user text to the right handler via the Strategy pattern.
+
+Each intent is a separate _Handler subclass implementing can_handle / handle.
+To add a new intent: create a subclass, append an instance to _HANDLERS.
+route() itself never needs to change (Open/Closed Principle).
+"""
 
 import re
 import logging
@@ -16,7 +21,7 @@ from config import DEFAULT_CITY
 
 log = logging.getLogger("hades.router")
 
-# ── Intent keyword sets ──────────────────────────────────────────────────────
+# ── Keyword sets ──────────────────────────────────────────────────────────────
 
 SCREEN_WORDS = (
     "look at my screen", "what's on my screen", "what is on my screen",
@@ -50,7 +55,7 @@ _HELP_PHRASES = frozenset({
     "what do you do", "what can i say",
 })
 
-# ── Service shims (lazy imports keep startup fast and Spotify auth deferred) ──
+# ── Service shims (lazy imports; Spotify OAuth deferred until first use) ───────
 
 def _weather(city: str) -> str:
     from services.weather import get_weather
@@ -72,7 +77,7 @@ def _spotify(text: str):
     from services.spotify import spotify_command
     return spotify_command(text)
 
-# ── Multi-turn pending state ─────────────────────────────────────────────────
+# ── Multi-turn pending state (note category flow) ─────────────────────────────
 
 _pending_state: dict = {}
 
@@ -124,7 +129,7 @@ def _start_note_flow(note_content: str, user_id: str = None) -> str:
             f"You have: {cats_display}. I suggest '{suggested}', Sir.")
 
 
-def _handle_pending_state(t: str) -> str | None:
+def _handle_pending_state(lower: str) -> str | None:
     if _pending_state.get("action") != "save_note":
         _pending_state.clear()
         return None
@@ -133,13 +138,13 @@ def _handle_pending_state(t: str) -> str | None:
     suggested  = _pending_state["suggested_category"]
     user_id    = _pending_state.get("user_id")
 
-    chosen = next((c for c in categories if c.lower() in t), None)
+    chosen = next((c for c in categories if c.lower() in lower), None)
 
-    if not chosen and any(w in t for w in _AFFIRM):
+    if not chosen and any(w in lower for w in _AFFIRM):
         chosen = suggested
 
     if not chosen:
-        words = [w for w in re.split(r"\W+", t) if len(w) > 2 and w not in _STOP_WORDS]
+        words = [w for w in re.split(r"\W+", lower) if len(w) > 2 and w not in _STOP_WORDS]
         if len(words) == 1:
             chosen = words[0]
 
@@ -153,77 +158,170 @@ def _handle_pending_state(t: str) -> str | None:
     return f"Sorry, Sir — should I file it under '{cats_str}'? I still suggest '{suggested}'."
 
 
-# ── Main router ──────────────────────────────────────────────────────────────
+# ── Strategy base class ───────────────────────────────────────────────────────
 
-def route(text: str, gui, user_id: str = None) -> str:
-    t = text.lower()
+class _Handler:
+    """Base for intent handlers. Subclass, override can_handle + handle, register in _HANDLERS."""
+    def can_handle(self, text: str, lower: str) -> bool:
+        raise NotImplementedError
+    def handle(self, text: str, lower: str, gui, user_id: str | None) -> str | None:
+        raise NotImplementedError
 
-    if _pending_state:
-        result = _handle_pending_state(t)
-        if result is not None:
-            return result
-        _pending_state.clear()
 
-    if "clear memory" in t or "forget everything" in t:
+# ── Concrete intent handlers (one class = one responsibility) ─────────────────
+
+class _ClearMemoryHandler(_Handler):
+    def can_handle(self, text, lower):
+        return "clear memory" in lower or "forget everything" in lower
+    def handle(self, text, lower, gui, user_id):
         return clear_memory(user_id)
 
-    if any(w in t for w in SCREEN_WORDS):
+
+class _ScreenHandler(_Handler):
+    def can_handle(self, text, lower):
+        return any(w in lower for w in SCREEN_WORDS)
+    def handle(self, text, lower, gui, user_id):
         from vision import analyze_screen
         return analyze_screen(
             f"Describe what you see in the attached screenshot and help the user with their request: '{text}'."
         )
 
-    if t.strip() in _HELP_PHRASES or re.search(r"^(show|list|what).*(command|capability)", t):
+
+class _HelpHandler(_Handler):
+    def can_handle(self, text, lower):
+        return (lower.strip() in _HELP_PHRASES or
+                bool(re.search(r"^(show|list|what).*(command|capability)", lower)))
+    def handle(self, text, lower, gui, user_id):
         gui.add_help_card(HELP_HTML)
         return "Here is a list of things I can help you with, Sir."
 
-    if re.search(r"\bdelete\b.+\blast\b.+\bnote\b|\bdelete\b.+\bnote\b.+\blast\b", t):
-        return delete_last_note(user_id=user_id)
-    _del_cat = re.search(r"\bdelete\b.+?\b(my\s+)?(\w+)\s+notes?\b", t)
-    if _del_cat:
-        _cat = _del_cat.group(2)
-        if _cat not in {"all", "my", "the", "a"}:
-            return delete_notes(_cat, user_id=user_id)
-        return delete_notes(user_id=user_id)
-    if re.search(r"\bdelete\b.+\ball\b.+\bnotes?\b|\bdelete\b.+\bnotes?\b.+\ball\b", t):
-        return delete_notes(user_id=user_id)
 
-    if any(trigger in t for trigger in NOTE_TRIGGERS):
-        note = re.sub(
-            r".*(note that|make a note|take a note|add a note|save a note|add this note)[:\s]*",
-            "", t,
-        ).strip()
-        if note:
-            return _start_note_flow(note, user_id)
+class _DeleteNoteHandler(_Handler):
+    _LAST  = re.compile(r"\bdelete\b.+\blast\b.+\bnote\b|\bdelete\b.+\bnote\b.+\blast\b")
+    _CAT   = re.compile(r"\bdelete\b.+?\b(my\s+)?(\w+)\s+notes?\b")
+    _ALL   = re.compile(r"\bdelete\b.+\ball\b.+\bnotes?\b|\bdelete\b.+\bnotes?\b.+\ball\b")
 
-    if "weather" in t:
-        m    = re.search(r"weather\s+(?:in|for|at)\s+([a-zA-Z\s]+)", t)
+    def can_handle(self, text, lower):
+        return "delete" in lower and "note" in lower
+
+    def handle(self, text, lower, gui, user_id):
+        if self._LAST.search(lower):
+            return delete_last_note(user_id=user_id)
+        m = self._CAT.search(lower)
+        if m:
+            cat = m.group(2)
+            if cat not in {"all", "my", "the", "a"}:
+                return delete_notes(cat, user_id=user_id)
+            return delete_notes(user_id=user_id)
+        if self._ALL.search(lower):
+            return delete_notes(user_id=user_id)
+        return None
+
+
+class _NoteHandler(_Handler):
+    _STRIP = re.compile(
+        r".*(note that|make a note|take a note|add a note|save a note|add this note)[:\s]*"
+    )
+    def can_handle(self, text, lower):
+        return any(trigger in lower for trigger in NOTE_TRIGGERS)
+    def handle(self, text, lower, gui, user_id):
+        note = self._STRIP.sub("", lower).strip()
+        return _start_note_flow(note, user_id) if note else None
+
+
+class _WeatherHandler(_Handler):
+    def can_handle(self, text, lower):
+        return "weather" in lower
+    def handle(self, text, lower, gui, user_id):
+        m    = re.search(r"weather\s+(?:in|for|at)\s+([a-zA-Z\s]+)", lower)
         city = m.group(1).strip() if m else DEFAULT_CITY
         return _weather(city)
 
-    if "news" in t or "headlines" in t:
-        m     = re.search(r"news\s+(?:about|on)\s+([a-zA-Z\s]+)", t)
+
+class _NewsHandler(_Handler):
+    def can_handle(self, text, lower):
+        return "news" in lower or "headlines" in lower
+    def handle(self, text, lower, gui, user_id):
+        m     = re.search(r"news\s+(?:about|on)\s+([a-zA-Z\s]+)", lower)
         topic = m.group(1).strip() if m else None
         return _news(topic)
 
-    if re.search(r"\bstock\b|\bshare price\b", t):
-        m = (re.search(r"([A-Za-z]{1,6})\s+(?:stock|share)", t) or
-             re.search(r"(?:stock|price of|how is)\s+([A-Za-z]{1,6})", t))
-        if m:
-            return _stock(m.group(1))
 
-    for keyword, coin_id in CRYPTO_COINS.items():
-        if re.search(rf"\b{re.escape(keyword)}\b", t):
-            return _crypto(coin_id)
+class _StockHandler(_Handler):
+    _PATTERN = re.compile(r"\bstock\b|\bshare price\b")
+    def can_handle(self, text, lower):
+        return bool(self._PATTERN.search(lower))
+    def handle(self, text, lower, gui, user_id):
+        m = (re.search(r"([A-Za-z]{1,6})\s+(?:stock|share)", lower) or
+             re.search(r"(?:stock|price of|how is)\s+([A-Za-z]{1,6})", lower))
+        return _stock(m.group(1)) if m else None
 
-    if any(w in t for w in SPOTIFY_WORDS):
-        result = _spotify(text)
-        if result:
+
+class _CryptoHandler(_Handler):
+    def can_handle(self, text, lower):
+        return any(re.search(rf"\b{re.escape(k)}\b", lower) for k in CRYPTO_COINS)
+    def handle(self, text, lower, gui, user_id):
+        for keyword, coin_id in CRYPTO_COINS.items():
+            if re.search(rf"\b{re.escape(keyword)}\b", lower):
+                return _crypto(coin_id)
+        return None
+
+
+class _SpotifyHandler(_Handler):
+    def can_handle(self, text, lower):
+        return any(w in lower for w in SPOTIFY_WORDS)
+    def handle(self, text, lower, gui, user_id):
+        return _spotify(text) or None
+
+
+class _PCCommandHandler(_Handler):
+    def can_handle(self, text, lower):
+        return True
+    def handle(self, text, lower, gui, user_id):
+        return handle_command(text) or None
+
+
+class _BrainFallback(_Handler):
+    def handle(self, text, lower, gui, user_id):
+        gui.set_status("thinking")
+        return think(text, user_id=user_id)
+
+
+# ── Handler registry — position defines priority ───────────────────────────────
+
+_HANDLERS: list[_Handler] = [
+    _ClearMemoryHandler(),
+    _ScreenHandler(),
+    _HelpHandler(),
+    _DeleteNoteHandler(),
+    _NoteHandler(),
+    _WeatherHandler(),
+    _NewsHandler(),
+    _StockHandler(),
+    _CryptoHandler(),
+    _SpotifyHandler(),
+    _PCCommandHandler(),
+]
+
+_FALLBACK = _BrainFallback()
+
+
+# ── Dispatcher ────────────────────────────────────────────────────────────────
+
+def route(text: str, gui, user_id: str = None) -> str:
+    """Dispatch user text to the first matching handler; fall back to the LLM."""
+    lower = text.lower()
+
+    if _pending_state:
+        result = _handle_pending_state(lower)
+        if result is not None:
             return result
+        _pending_state.clear()
 
-    result = handle_command(text)
-    if result:
-        return result
+    for handler in _HANDLERS:
+        if handler.can_handle(text, lower):
+            result = handler.handle(text, lower, gui, user_id)
+            if result is not None:
+                return result
 
-    gui.set_status("thinking")
-    return think(text, user_id=user_id)
+    return _FALLBACK.handle(text, lower, gui, user_id)

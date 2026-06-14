@@ -125,7 +125,7 @@ Called by `db.retrieve_relevant()`. Returns up to `match_count` rows whose cosin
 | `brain.py` | `conversation_history` list + `conversation_history.json` (local mode); `conversation_memory` rows via `db` (Supabase mode) | Writes JSON or Supabase rows on every reply |
 | `db.py` | Supabase client, embedder, all DB operations | Network calls to Supabase; loads SentenceTransformer on first embed |
 | `commands/notes.py` | `notes.txt` (local) or `notes` table via `db` (Supabase) | Appends/rewrites notes file |
-| `commands/system.py` | OS shell calls, volume, app launch, reminders | Fires system commands; spawns reminder threads |
+| `commands/system.py` | 12 `_CommandHandler` subclasses + `handle_command()` dispatcher; OS shell calls, volume, apps | Fires system commands; spawns reminder threads |
 | `commands/help.py` | `HELP_HTML` constant | None |
 | `voice/tts.py` | Piper audio output, `voices/` download | Plays audio; prints to stdout; downloads model files |
 | `voice/stt.py` | Mic stream via SpeechRecognition | Blocks on mic input |
@@ -138,31 +138,33 @@ Called by `db.retrieve_relevant()`. Returns up to `match_count` rows whose cosin
 | `face_auth.py` | `face_encodings.pkl` | Accesses camera |
 | `gui.py` | pywebview window, `~/.jarvis/session.json` | Calls JS via evaluate_js; reads/writes session file |
 | `config.py` | `.env` values | None (read-only) |
-| `router.py` | Intent routing, `_pending_state` note flow | Orchestrates handler modules |
+| `router.py` | 11 `_Handler` subclasses + `route()` dispatcher (Strategy pattern); `_pending_state` note flow | Orchestrates handler modules |
 | `main.py` | Voice loop, text handler, startup wiring, `user_id` | Starts threads; calls router and voice |
 
 ---
 
 ## Intent Routing Logic (`router.py:route()`)
 
-Priority order (first match wins):
+`route()` is a Strategy-pattern dispatcher (Session 011). Each intent is a `_Handler`
+subclass implementing `can_handle()` + `handle()`. The dispatcher iterates `_HANDLERS`
+and calls the first that matches. Adding new intents never modifies `route()` (OCP).
+
+Priority order (position in `_HANDLERS` list):
 
 ```
-0.  _pending_state active                        → _handle_pending_state(t)    ← note category multi-turn
-1.  "clear memory" / "forget everything"         → brain.clear_memory(user_id)
-2.  Screen keywords                              → vision.analyze_screen(prompt)
-3.  "help" / "commands" / exact help phrases     → gui.add_help_card() + spoken intro
-4a. delete-note regex (last note)                → commands.delete_last_note(user_id)
-4b. delete-note regex (by category)             → commands.delete_notes(cat, user_id)
-4c. delete-note regex (all notes)               → commands.delete_notes(user_id=user_id)
-5.  Note-taking triggers                         → _start_note_flow(note, user_id)
-6.  "weather"                                    → weather.get_weather(city)
-7.  "news" / "headlines"                         → news.get_news(topic)
-8.  stock regex (\bstock\b|\bshare price\b)      → stocks.get_stock(symbol)
-9.  crypto coin keywords                         → stocks.get_crypto(coin_id)
-10. Spotify trigger phrases                      → spotify.spotify_command(text)
-11. PC commands (volume, time, apps, etc.)       → commands.handle_command(text)
-12. fallback                                     → brain.think(text, user_id)
+0.  _pending_state active          → _handle_pending_state()     ← note category multi-turn
+1.  _ClearMemoryHandler            → brain.clear_memory(user_id)
+2.  _ScreenHandler                 → vision.analyze_screen(prompt)
+3.  _HelpHandler                   → gui.add_help_card() + spoken intro
+4.  _DeleteNoteHandler             → delete_last_note / delete_notes (3 regex branches)
+5.  _NoteHandler                   → _start_note_flow(note, user_id)
+6.  _WeatherHandler                → services.weather.get_weather(city)
+7.  _NewsHandler                   → services.news.get_news(topic)
+8.  _StockHandler                  → services.stocks.get_stock(symbol)
+9.  _CryptoHandler                 → services.stocks.get_crypto(coin_id)
+10. _SpotifyHandler                → services.spotify.spotify_command(text)
+11. _PCCommandHandler              → commands.handle_command(text) [Strategy pattern inside]
+    _BrainFallback (if all return None) → brain.think(text, user_id)
 ```
 
 ### Multi-turn note flow (`_pending_state`)
