@@ -61,7 +61,7 @@ Supabase session token stored outside the project directory (so it persists acro
 ---
 
 ### `voices/en_GB-alan-medium.onnx` + `.onnx.json`
-Binary Piper TTS voice model. Read once at first `speak()` call. Auto-downloaded by `voice.py:_auto_download_piper()` if missing. Gitignored.
+Binary Piper TTS voice model. Read once at first `speak()` call. Auto-downloaded by `voice/tts.py:_auto_download_piper()` if missing. Gitignored.
 
 ---
 
@@ -124,21 +124,26 @@ Called by `db.retrieve_relevant()`. Returns up to `match_count` rows whose cosin
 |---|---|---|
 | `brain.py` | `conversation_history` list + `conversation_history.json` (local mode); `conversation_memory` rows via `db` (Supabase mode) | Writes JSON or Supabase rows on every reply |
 | `db.py` | Supabase client, embedder, all DB operations | Network calls to Supabase; loads SentenceTransformer on first embed |
-| `commands.py` | `notes.txt` (local) or `notes` table via `db` (Supabase); OS shell calls; `HELP_HTML` constant | Appends/rewrites notes; fires system commands |
-| `voice.py` | Mic stream, Piper audio output, `voices/` download | Plays audio; prints to stdout; downloads model files |
+| `commands/notes.py` | `notes.txt` (local) or `notes` table via `db` (Supabase) | Appends/rewrites notes file |
+| `commands/system.py` | OS shell calls, volume, app launch, reminders | Fires system commands; spawns reminder threads |
+| `commands/help.py` | `HELP_HTML` constant | None |
+| `voice/tts.py` | Piper audio output, `voices/` download | Plays audio; prints to stdout; downloads model files |
+| `voice/stt.py` | Mic stream via SpeechRecognition | Blocks on mic input |
+| `voice/wake.py` | Wake word detection loop | Blocks on mic; debounces triggers |
 | `vision.py` | Screen capture (ephemeral) | No persistence |
-| `weather.py` | None | HTTP GET to OpenWeatherMap |
-| `news.py` | None | HTTP GET to NewsAPI |
-| `stocks.py` | None | HTTP GET to yfinance / CoinGecko |
-| `spotify.py` | Spotify OAuth `.cache` | Controls Spotify client |
+| `services/weather.py` | None | HTTP GET to OpenWeatherMap |
+| `services/news.py` | None | HTTP GET to NewsAPI |
+| `services/stocks.py` | None | HTTP GET to yfinance / CoinGecko |
+| `services/spotify.py` | Spotify OAuth `.cache` | Controls Spotify client |
 | `face_auth.py` | `face_encodings.pkl` | Accesses camera |
 | `gui.py` | pywebview window, `~/.jarvis/session.json` | Calls JS via evaluate_js; reads/writes session file |
 | `config.py` | `.env` values | None (read-only) |
-| `main.py` | Voice loop, intent routing, `user_id` | Orchestrates all modules |
+| `router.py` | Intent routing, `_pending_state` note flow | Orchestrates handler modules |
+| `main.py` | Voice loop, text handler, startup wiring, `user_id` | Starts threads; calls router and voice |
 
 ---
 
-## Intent Routing Logic (`main.py:route()`)
+## Intent Routing Logic (`router.py:route()`)
 
 Priority order (first match wins):
 

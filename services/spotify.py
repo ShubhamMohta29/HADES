@@ -6,6 +6,7 @@ Setup:
   4. Add SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI to .env
 """
 import logging
+
 log = logging.getLogger("hades.spotify")
 
 try:
@@ -14,51 +15,52 @@ try:
     from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, SPOTIFY_REDIRECT_URI
 
     sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-    client_id=SPOTIFY_CLIENT_ID,
-    client_secret=SPOTIFY_CLIENT_SECRET,
-    redirect_uri="http://127.0.0.1:8888/callback",
-    scope="user-modify-playback-state user-read-playback-state user-read-currently-playing playlist-read-private playlist-read-collaborative user-library-read",
-    open_browser=True  # auto-opens browser for auth
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET,
+        redirect_uri="http://127.0.0.1:8888/callback",
+        scope=(
+            "user-modify-playback-state user-read-playback-state "
+            "user-read-currently-playing playlist-read-private "
+            "playlist-read-collaborative user-library-read"
+        ),
+        open_browser=True,
     ))
     SPOTIFY_AVAILABLE = True
 except Exception:
     SPOTIFY_AVAILABLE = False
+
 
 def get_active_device():
     devices = sp.devices()
     device_list = devices.get("devices", [])
     if not device_list:
         return None
-    # Prefer active device, otherwise take first available
     for d in device_list:
         if d["is_active"]:
             return d["id"]
-    return device_list[0]["id"]  # use first available if none active
+    return device_list[0]["id"]
+
 
 def get_liked_songs_uri():
-    """Get the context URI for user's liked songs."""
     return "spotify:user:" + sp.current_user()["id"] + ":collection"
 
+
 def get_liked_songs_context():
-    """Return a context object for liked songs (used for playback)."""
     return "spotify:collection"
 
+
 def get_playlist_uri(playlist_name):
-    """Search for a playlist by name and return its URI."""
     results = sp.current_user_playlists(limit=50)
-    
     for playlist in results["items"]:
         if playlist_name.lower() in playlist["name"].lower():
             return playlist["uri"], playlist["name"]
-    
-    # If not found in first 50, try more
     while results.get("next"):
         results = sp.next(results)
         for playlist in results["items"]:
             if playlist_name.lower() in playlist["name"].lower():
                 return playlist["uri"], playlist["name"]
-    
     return None, None
+
 
 def spotify_command(text):
     if not SPOTIFY_AVAILABLE:
@@ -70,14 +72,11 @@ def spotify_command(text):
         if not device_id:
             return "No Spotify device found. Please open Spotify and play something manually first, Sir."
 
-        # ── Liked Songs ──────────────────────────────────────────────────────
         if "liked songs" in t or "saved songs" in t or "my favorites" in t:
             sp.start_playback(device_id=device_id, context_uri="spotify:collection")
             return "Playing your liked songs, Sir."
 
-        # ── Playlist ─────────────────────────────────────────────────────────
         if "play" in t and "playlist" in t:
-            # Extract playlist name: "play [playlist name] playlist"
             playlist_name = t.replace("play", "").replace("playlist", "").strip()
             if playlist_name:
                 uri, name = get_playlist_uri(playlist_name)
@@ -87,10 +86,9 @@ def spotify_command(text):
                 return f"Could not find playlist {playlist_name}, Sir."
             return "Which playlist, Sir?"
 
-        # ── Specific Song ────────────────────────────────────────────────────
         if "play" in t and "spotify" not in t:
-            query = t.replace("play", "").replace("music", "").replace("a song", "").replace("me", "").strip()
-            
+            query = (t.replace("play", "").replace("music", "")
+                      .replace("a song", "").replace("me", "").strip())
             if query:
                 results = sp.search(q=query, limit=1, type="track")
                 tracks = results["tracks"]["items"]
@@ -98,10 +96,8 @@ def spotify_command(text):
                     sp.start_playback(device_id=device_id, uris=[tracks[0]["uri"]])
                     return f"Playing {tracks[0]['name']} by {tracks[0]['artists'][0]['name']}, Sir."
                 return f"Could not find {query} on Spotify, Sir."
-            else:
-                # No specific song — just resume
-                sp.start_playback(device_id=device_id)
-                return "Resuming playback, Sir."
+            sp.start_playback(device_id=device_id)
+            return "Resuming playback, Sir."
 
         if "pause" in t or "stop music" in t:
             sp.pause_playback()

@@ -11,9 +11,9 @@ def get_weather(city: str = "your city") -> str:
         res = requests.get(url, params=params, timeout=8).json()
         if res.get("cod") != 200:
             return f"Could not find weather for {city}, Sir."
-        desc    = res["weather"][0]["description"].capitalize()
-        temp    = res["main"]["temp"]
-        feels   = res["main"]["feels_like"]
+        desc     = res["weather"][0]["description"].capitalize()
+        temp     = res["main"]["temp"]
+        feels    = res["main"]["feels_like"]
         humidity = res["main"]["humidity"]
         return (f"Weather in {city.title()}: {desc}. "
                 f"Temperature is {temp}°C, feels like {feels}°C, "

@@ -9,8 +9,8 @@
 ## Backend
 - **Python 3.10+** — single-process application
 - `main.py` runs the voice loop on a daemon thread; GUI runs on the main thread
-- Module architecture: `brain`, `db`, `voice`, `commands`, `vision`, `weather`, `news`, `stocks`, `spotify`, `face_auth`, `config`, `gui`
-- Intent routing in `main.py:route()` — regex + keyword matching, 13-step priority chain, falls back to Groq LLM
+- Module architecture: `brain`, `db`, `voice/` (tts, stt, wake), `commands/` (system, notes, help), `services/` (weather, news, stocks, spotify), `vision`, `face_auth`, `config`, `gui`
+- Intent routing in `router.py:route()` — regex + keyword matching, 13-step priority chain, falls back to Groq LLM; `main.py` is the entry point and voice loop only
 
 ## AI / LLM
 - **Groq API** — Llama 3.3 70B Versatile for conversational AI (`brain.py`)
@@ -80,19 +80,34 @@
 
 ```
 HADES/
-├── main.py                    # entry point, voice loop, 13-step intent router
+├── main.py                    # entry point: hades_loop(), handle_text_command(), startup wiring
+├── router.py                  # route(), 13-step intent router, _pending_state note flow
 ├── brain.py                   # Groq LLM, two-tier memory (Supabase / local JSON)
 ├── db.py                      # Supabase client, embeddings, auth, notes, memory
-├── voice.py                   # Piper TTS + auto-download, SpeechRecognition, wake word
 ├── vision.py                  # screen capture + Groq Llama 4 Scout multimodal
-├── commands.py                # PC control, notes + deletion, HELP_HTML
-├── weather.py                 # OpenWeatherMap
-├── news.py                    # NewsAPI
-├── stocks.py                  # yfinance + CoinGecko
-├── spotify.py                 # Spotipy playback control + error summarization
 ├── face_auth.py               # optional face verification (register + verify)
 ├── gui.py                     # pywebview window + JS bridge + auth flow
 ├── config.py                  # .env loader, all constants
+│
+├── voice/
+│   ├── __init__.py            # re-exports: speak, listen, wait_for_wake_word, MIC_ERROR, WAKE_WORDS
+│   ├── tts.py                 # Piper TTS: speak(), _init_piper(), auto-download, playback backends
+│   ├── stt.py                 # SpeechRecognition: listen(), shared recognizer, MIC_ERROR sentinel
+│   └── wake.py                # wake word: wait_for_wake_word(), listen_for_wake_word_once(), WAKE_WORDS
+│
+├── commands/
+│   ├── __init__.py            # re-exports all public names
+│   ├── system.py              # handle_command(): volume, apps, power, time, battery, reminders, web
+│   ├── notes.py               # save_note, read_notes, delete_last_note, delete_notes, get_existing_categories
+│   └── help.py                # HELP_HTML constant
+│
+├── services/
+│   ├── __init__.py
+│   ├── weather.py             # OpenWeatherMap
+│   ├── news.py                # NewsAPI
+│   ├── stocks.py              # yfinance + CoinGecko
+│   └── spotify.py             # Spotipy playback control + error summarization
+│
 ├── supabase_schema.sql        # SQL: notes + conversation_memory tables, match_memory RPC
 ├── run_once_migrate_notes.py  # one-time notes.txt → Supabase migration
 ├── smoke_test.py              # pre-flight API key validation
@@ -103,7 +118,7 @@ HADES/
 ├── voices/
 │   └── en_GB-alan-medium.onnx   # Piper voice model (gitignored, ~60 MB, auto-downloaded)
 ├── tests/
-│   └── test_route.py          # 24 unit tests for route() (pytest, all deps mocked)
+│   └── test_route.py          # 24 unit tests for router.route() (pytest, all deps mocked)
 ├── conversation_history.json  # local memory fallback (auto-generated, gitignored)
 ├── notes.txt                  # local notes fallback (gitignored)
 ├── face_encodings.pkl         # face auth biometric data (gitignored)

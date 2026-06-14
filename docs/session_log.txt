@@ -10,6 +10,86 @@ Format:
   NEXT        What to pick up next session
 
 --------------------------------------------------------------------------------
+SESSION 010 — 2026-06-14
+--------------------------------------------------------------------------------
+WHAT
+  Pre-Phase-14 refactor: reorganised the flat module layout into packages to
+  improve scalability, readability, and maintainability. No behaviour changes.
+  All 24 tests pass.
+
+  STRUCTURE CHANGES
+  - voice/ package (was voice.py, 356 lines):
+      tts.py   — speak(), Piper init, _speak_piper_api/cli()
+      stt.py   — listen(), shared recognizer instance, MIC_ERROR sentinel
+      wake.py  — wait_for_wake_word(), listen_for_wake_word_once(), WAKE_WORDS,
+                  _build_wake_set(), debounce state
+      __init__.py — re-exports speak, listen, wait_for_wake_word,
+                    listen_for_wake_word_once, MIC_ERROR, WAKE_WORDS so all
+                    callers (`from voice import ...`) continue to work unchanged.
+
+  - commands/ package (was commands.py, 376 lines):
+      system.py  — handle_command(), set_volume(), set_reminder(), APPS, WEBSITES
+      notes.py   — save_note, read_notes, delete_last_note, delete_notes,
+                   get_existing_categories, _use_db() (all db-aware)
+      help.py    — HELP_HTML constant
+      __init__.py — re-exports handle_command, all notes functions, HELP_HTML
+
+  - services/ package (were 4 root-level files):
+      weather.py, news.py, stocks.py, spotify.py — moved verbatim; spotify.py
+      indentation and scope string formatting cleaned up
+
+  - router.py (extracted from main.py):
+      route(), SCREEN_WORDS, SPOTIFY_WORDS, CRYPTO_COINS, NOTE_TRIGGERS,
+      _HELP_PHRASES, _pending_state, _suggest_category, _start_note_flow,
+      _handle_pending_state, and lazy service shims (_weather, _news, _stock,
+      _crypto, _spotify — now import from services/*)
+
+  - main.py (slimmed: 390 → 95 lines):
+      Kept: hades_loop(), handle_text_command(), SLEEP_WORDS, __main__ wiring.
+      Everything else moved to router.py.
+
+  DELETED (replaced by packages above)
+    voice.py, commands.py, weather.py, news.py, stocks.py, spotify.py
+
+  TEST FIXES (pre-existing bugs exposed during refactor)
+  - 4 test assertions in tests/test_route.py were missing user_id=None in
+    assert_called_once_with() checks for save_note() and think(). The functions
+    always passed user_id=None when no user was authenticated, but the old tests
+    did not verify the keyword argument — they were silently incomplete. Fixed.
+
+FILES MODIFIED
+  main.py             Slimmed to entry point + voice loop only
+  tests/test_route.py Updated all `import main` → `import router`; all
+                      `patch("main.xxx")` → `patch("router.xxx")`; updated
+                      4 save_note/think assertions to include user_id=None;
+                      updated service stubs from "weather" etc. to
+                      "services.weather" etc.
+
+FILES CREATED
+  router.py
+  voice/__init__.py, voice/tts.py, voice/stt.py, voice/wake.py
+  commands/__init__.py, commands/system.py, commands/notes.py, commands/help.py
+  services/__init__.py, services/weather.py, services/news.py,
+  services/stocks.py, services/spotify.py
+
+FILES DELETED
+  voice.py, commands.py, weather.py, news.py, stocks.py, spotify.py
+
+DOCS UPDATED
+  docs/02-TRD.md       Module architecture line; Folder Structure section rewritten
+  docs/05-BackendSchema.md  Module Responsibilities table; routing section title;
+                            voice model auto-download file reference
+  docs/06-ImplementationPlan.md  Phase 14/15/16 file references updated
+                            (voice/wake.py, router.py, commands/system.py)
+  docs/index.txt       All section descriptions and FILE MAP rewritten
+  docs/session_log.txt This entry
+
+NEXT
+  - Phase 14 — Neural Wake Word (openWakeWord): rewrite voice/wake.py
+  - Phase 15 — Continuous Conversation
+  - Phase 16 — Action Confirmation Gate
+
+--------------------------------------------------------------------------------
 SESSION 009 — 2026-06-14
 --------------------------------------------------------------------------------
 WHAT

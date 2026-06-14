@@ -208,7 +208,7 @@
 
 - [ ] Add `openwakeword` to `requirements.txt`
 - [ ] Add `WAKE_MODEL` env var to `config.py` and `.env.example` — path to custom `.onnx` wake word model; defaults to the built-in "hey jarvis" or a HADES-trained model
-- [ ] Rewrite `voice.py:wait_for_wake_word()` — swap STT polling loop for `openwakeword.Model` streaming inference on raw mic audio; keep `WAKE_DEBOUNCE` logic; keep `listen_for_wake_word_once()` helper using the same model
+- [ ] Rewrite `voice/wake.py:wait_for_wake_word()` — swap STT polling loop for `openwakeword.Model` streaming inference on raw mic audio; keep `WAKE_DEBOUNCE` logic; keep `listen_for_wake_word_once()` helper using the same model
 - [ ] Remove or demote the old fuzzy-STT fallback (keep as a `--no-neural` flag for debugging)
 - [ ] Test: reliable detection at 1m distance in quiet room; < 2 false triggers per hour of ambient speech
 
@@ -220,7 +220,7 @@
 **Goal**: After HADES speaks its reply, keep the mic open for a follow-up window instead of returning to standby. User can ask "what about Tuesday?" without re-saying the wake word — this is the core JARVIS feel missing from the current loop.
 
 - [ ] Add `FOLLOWUP_TIMEOUT` env var to `config.py` and `.env.example` (default: `15` seconds)
-- [ ] Refactor `main.py:hades_loop()` inner loop — after `speak(response)`, instead of returning to `wait_for_wake_word()`, continue the `listen()` loop for up to `FOLLOWUP_TIMEOUT` seconds of silence before breaking back to standby
+- [ ] Refactor `main.py:hades_loop()` inner loop — after `speak(response)`, instead of returning to `voice/wake.py:wait_for_wake_word()`, continue the `listen()` loop for up to `FOLLOWUP_TIMEOUT` seconds of silence before breaking back to standby
 - [ ] Display a "follow-up" orb sub-state in the GUI (listening state with a subtle countdown indicator or dimming effect) so the user knows the window is open
 - [ ] Exit the follow-up window on: explicit sleep word, `FOLLOWUP_TIMEOUT` seconds of consecutive silence, or `MIC_ERROR` streak
 - [ ] Handle text commands: `handle_text_command()` already works regardless of voice state; no change needed
@@ -235,11 +235,11 @@
 
 **Actions requiring confirmation**: shutdown, restart, delete all notes, delete category notes, (future) send email, (future) create/delete calendar event.
 
-- [ ] Add `_confirm_pending` state to `_pending_state` dict in `main.py` — similar to the note-category flow; stores the deferred action callable + description
-- [ ] Add `_CONFIRM_WORDS` frozenset (e.g. "yes", "confirm", "do it", "go ahead") and `_DENY_WORDS` (e.g. "no", "cancel", "stop", "never mind") to `main.py`
-- [ ] Add `_handle_confirm_state(t)` in `main.py` — if `_confirm_pending` is active, check confirm/deny; on confirm, call the stored callable; on deny or ambiguous, cancel and say "Cancelled, Sir."
-- [ ] Wrap destructive commands in `commands.py` with a `requires_confirm` marker (simple dict or decorator) so `route()` can intercept them before execution
-- [ ] In `route()`: when a destructive command is matched, instead of calling it immediately, set `_confirm_pending` and return the confirmation prompt ("Are you sure you want to shut down, Sir?")
+- [ ] Add `_confirm_pending` state to `_pending_state` dict in `router.py` — similar to the note-category flow; stores the deferred action callable + description
+- [ ] Add `_CONFIRM_WORDS` frozenset (e.g. "yes", "confirm", "do it", "go ahead") and `_DENY_WORDS` (e.g. "no", "cancel", "stop", "never mind") to `router.py`
+- [ ] Add `_handle_confirm_state(t)` in `router.py` — if `_confirm_pending` is active, check confirm/deny; on confirm, call the stored callable; on deny or ambiguous, cancel and say "Cancelled, Sir."
+- [ ] Wrap destructive commands in `commands/system.py` with a `requires_confirm` marker (simple dict or decorator) so `route()` can intercept them before execution
+- [ ] In `router.py:route()`: when a destructive command is matched, instead of calling it immediately, set `_confirm_pending` and return the confirmation prompt ("Are you sure you want to shut down, Sir?")
 - [ ] GUI: show the confirmation prompt in the chat + orb stays in THINKING state until resolved
 - [ ] Add `CONFIRM_TIMEOUT` env var (default: `10s`) — if no response within timeout, auto-cancel
 - [ ] Test: "shutdown" → "Are you sure?" → "yes" → shuts down; "shutdown" → "no" → "Cancelled, Sir."; timeout → auto-cancel

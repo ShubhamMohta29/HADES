@@ -1,7 +1,7 @@
 ================================================================================
 HADES — Human Assistance and Decision Engineering System
 Project Index & Status
-Last updated: 2026-06-14
+Last updated: 2026-06-14 (Session 010 — pre-Phase-14 refactor)
 ================================================================================
 
 OVERVIEW
@@ -28,30 +28,41 @@ WHAT HAS BEEN BUILT (complete — v0.x)
                           conversation_history.json. Thread-safe lock. Trimmed
                           and written to disk after every reply.
                       think() and clear_memory() both accept optional user_id.
-  - voice.py          Piper TTS (offline neural, British male voice):
-                        • Python API path (piper.PiperVoice + sounddevice);
-                          CLI fallback (piper binary); print-only ultimate fallback
-                        • _auto_download_piper(): on first run, downloads
-                          en_GB-alan-medium.onnx + .onnx.json (~60 MB) from
-                          HuggingFace if missing at ./voices/ — no manual download
-                        • _speak_piper_api(): queries device native sample rate
-                          (sd.query_devices), resamples Piper 22050 Hz → device
-                          rate via np.interp, converts int16→float32 to eliminate
-                          Windows audio-driver stuttering
-                      Google STT via SpeechRecognition; configurable wake words
-                      (WAKE_WORDS env var) with per-word fuzzy STT-mishear variant
-                      sets; 2.5s debounce (WAKE_DEBOUNCE env var);
-                      MIC_ERROR sentinel distinguishes mic failure from silence;
-                      listen_for_wake_word_once() helper for sleep-mode checks;
-                      no per-call ambient-noise calibration in listen() (dynamic
-                      _energy_threshold handles it continuously)
-  - main.py           Full voice loop (standby → wake → listen → think → speak),
-                      true sleep mode (mic on but only wake word processed; orb
-                      dims), 13-step intent router, text command handler with
-                      sleep-word detection, _pending_state multi-turn state
-                      machine. user_id threaded from auth callback through
-                      route() to every handler. on_auth_complete callback
-                      stores resolved user_id before voice loop starts.
+  - voice/            Voice I/O package — split into three focused modules:
+    tts.py              Piper TTS (offline neural, British male voice):
+                          • Python API path (piper.PiperVoice + sounddevice);
+                            CLI fallback (piper binary); print-only ultimate fallback
+                          • _auto_download_piper(): downloads en_GB-alan-medium.onnx
+                            + .onnx.json (~60 MB) from HuggingFace on first run
+                          • _speak_piper_api(): queries device native sample rate,
+                            resamples Piper 22050 Hz → device rate via np.interp,
+                            converts int16→float32 to eliminate Windows stuttering
+    stt.py              Google STT via SpeechRecognition; shared recognizer instance;
+                          MIC_ERROR sentinel distinguishes mic failure from silence;
+                          no per-call ambient-noise calibration in listen() (dynamic
+                          energy_threshold handles it continuously)
+    wake.py             Configurable wake words (WAKE_WORDS env var) with per-word
+                          fuzzy STT-mishear variant sets; 2.5s debounce
+                          (WAKE_DEBOUNCE env var); wait_for_wake_word() blocks until
+                          wake word heard; listen_for_wake_word_once() helper for
+                          sleep-mode checks
+    __init__.py         Re-exports speak, listen, wait_for_wake_word,
+                          listen_for_wake_word_once, MIC_ERROR, WAKE_WORDS —
+                          callers use `from voice import ...` unchanged
+  - main.py           Entry point and voice loop only: hades_loop() (standby →
+                      wake → listen → think → speak; true sleep mode with orb
+                      dimming), handle_text_command(), startup wiring (auth
+                      event, threading). user_id threaded from auth callback
+                      through route() to every handler. on_auth_complete
+                      callback stores resolved user_id before voice loop starts.
+  - router.py         13-step intent router: route() maps user text to the
+                      right handler via regex + keyword matching, falling back
+                      to brain.think(). Owns _pending_state multi-turn note
+                      flow (_start_note_flow, _handle_pending_state,
+                      _suggest_category). All intent keyword sets live here
+                      (SCREEN_WORDS, SPOTIFY_WORDS, CRYPTO_COINS, NOTE_TRIGGERS).
+                      Service shims (_weather, _news, _stock, _crypto, _spotify)
+                      use lazy imports so Spotify auth is deferred until needed.
   - config.py         .env loader for all API keys, Supabase credentials, and
                       settings flags (WAKE_WORDS, WAKE_DEBOUNCE, PIPER_MODEL,
                       FACE_AUTH_ENABLED, SUPABASE_URL, SUPABASE_ANON_KEY)
@@ -84,26 +95,28 @@ WHAT HAS BEEN BUILT (complete — v0.x)
                           confirmation; signup panel; skip button for local mode)
 
 [COMMANDS]
-  - commands.py       Volume (set/up/down/mute via pycaw + pyautogui), time &
-                      date, battery, screenshot, clipboard read,
-                      shutdown/restart/lock/cancel, notes (save with category +
-                      read with filter + get_existing_categories; all db-aware
-                      via _use_db(user_id) — falls back to notes.txt when no
-                      Supabase), note deletion (delete_last_note, delete_notes
-                      by category or all), timed reminders, web search, app
-                      launcher, website opener, CPU/RAM/disk, HELP_HTML constant.
-                      set_volume() uses getattr(speakers, '_dev', speakers) to
-                      unwrap the pycaw AudioDevice wrapper before calling Activate
-                      (compatible with both old and new pycaw versions).
+  - commands/         PC control package — split into three focused modules:
+    system.py           handle_command(): volume (set/up/down/mute via pycaw +
+                          pyautogui), time & date, battery, screenshot, clipboard
+                          read, shutdown/restart/lock/cancel, timed reminders,
+                          web search, app launcher, website opener, CPU/RAM/disk.
+                          set_volume() uses getattr(speakers, '_dev', speakers) to
+                          unwrap the pycaw AudioDevice wrapper before Activate().
+    notes.py            save_note, read_notes, delete_last_note, delete_notes,
+                          get_existing_categories — all db-aware via _use_db(user_id),
+                          falling back to notes.txt when Supabase is absent.
+    help.py             HELP_HTML constant rendered in the chat panel.
+    __init__.py         Re-exports handle_command, all notes functions, HELP_HTML.
 
 [INTEGRATIONS]
-  - weather.py        OpenWeatherMap — current weather by city
-  - news.py           NewsAPI — top 5 headlines or topic-specific news
-  - stocks.py         yfinance — live stock price; CoinGecko — crypto price
-                      (BTC/ETH/SOL/DOGE/ADA/XRP)
-  - spotify.py        Spotipy — play by query, pause/resume, skip, previous,
-                      shuffle, current track; HTTP-status-aware error
-                      summarization (401/403/404/429/503)
+  - services/         External data services package:
+    weather.py          OpenWeatherMap — current weather by city
+    news.py             NewsAPI — top 5 headlines or topic-specific news
+    stocks.py           yfinance — live stock price; CoinGecko — crypto price
+                          (BTC/ETH/SOL/DOGE/ADA/XRP)
+    spotify.py          Spotipy — play by query, pause/resume, skip, previous,
+                          shuffle, current track; HTTP-status-aware error
+                          summarization (401/403/404/429/503)
   - vision.py         Screen capture (PIL.ImageGrab) → Groq Llama 4 Scout
                       (meta-llama/llama-4-scout-17b-16e-instruct, multimodal);
                       HADES persona system prompt; image resized to 1280px,
@@ -133,7 +146,7 @@ WHAT HAS BEEN BUILT (complete — v0.x)
                       PASS/FAIL/SKIP per key; exits 1 on any failure.
 
 [TESTS]
-  - tests/test_route.py   24 unit tests for main.py:route() — all routing
+  - tests/test_route.py   24 unit tests for router.py:route() — all routing
                           branches covered, all dependencies mocked; runs with
                           `pytest tests/` (no API keys, mic, or Piper needed)
 
@@ -159,7 +172,7 @@ WHAT STILL NEEDS TO BE BUILT (v1.0+ roadmap)
     model that runs continuously on the mic stream. openWakeWord detects the
     wake word acoustically without transcribing every utterance — far fewer
     false triggers, lower CPU, and works even when ambient noise confuses STT.
-    Files: voice.py (wait_for_wake_word), requirements.txt, .env.example
+    Files: voice/wake.py (wait_for_wake_word), requirements.txt, .env.example
     Prerequisite for: Continuous Conversation (Phase 15)
 
   PHASE 15 — Continuous Conversation (hold-open window)
@@ -175,7 +188,7 @@ WHAT STILL NEEDS TO BE BUILT (v1.0+ roadmap)
     send message) require a spoken or clicked confirmation before execution.
     HADES asks "Are you sure, Sir?" — "yes/confirm" proceeds; anything else
     cancels. Prerequisite for safe calendar (write) and email (send) features.
-    Files: main.py (confirmation state machine), commands.py (gate decorators)
+    Files: router.py (confirmation state machine), commands/system.py (gate decorators)
 
 [v1.0 — remaining items]
   - Barge-in / interruptible speech: talk over HADES to stop or redirect
@@ -210,22 +223,32 @@ FILE MAP
 --------------------------------------------------------------------------------
 
 HADES/
-  main.py                 Entry point, voice loop, 13-step intent router,
-                          note state machine, text-input sleep handling,
-                          user_id threading from auth callback
+  main.py                 Entry point + voice loop (hades_loop, handle_text_command,
+                          startup wiring, user_id threading from auth callback)
+  router.py               13-step intent router, _pending_state note flow,
+                          service shims, intent keyword sets
   brain.py                Groq LLM + two-tier memory (Supabase / local JSON)
   db.py                   Supabase client, embeddings, auth, notes, memory
-  voice.py                Piper TTS + auto-download + SpeechRecognition STT
-                          + wake word system + MIC_ERROR sentinel
   vision.py               Screen capture + Groq Llama 4 Scout multimodal
-  commands.py             PC control, categorised notes + deletion, HELP_HTML
-  weather.py              OpenWeatherMap integration
-  news.py                 NewsAPI integration
-  stocks.py               Stock + crypto price lookups
-  spotify.py              Spotify playback control + error summarization
   face_auth.py            Optional face auth gate (register + verify)
   gui.py                  pywebview window + JS bridge + auth flow
   config.py               .env loader (all keys, Supabase, wake word settings)
+  voice/
+    __init__.py           Re-exports speak, listen, wait_for_wake_word, MIC_ERROR
+    tts.py                Piper TTS + auto-download + audio playback backends
+    stt.py                SpeechRecognition STT + MIC_ERROR sentinel
+    wake.py               Wake word detection + debounce + WAKE_WORDS set
+  commands/
+    __init__.py           Re-exports handle_command, notes functions, HELP_HTML
+    system.py             Volume, time, battery, apps, power, reminders, web
+    notes.py              Categorised notes CRUD + deletion (local + Supabase)
+    help.py               HELP_HTML constant
+  services/
+    __init__.py
+    weather.py            OpenWeatherMap integration
+    news.py               NewsAPI integration
+    stocks.py             Stock + crypto price lookups
+    spotify.py            Spotify playback control + error summarization
   supabase_schema.sql     Supabase SQL: tables, RLS, match_memory() function
   run_once_migrate_notes.py  One-time notes.txt → Supabase migration
   smoke_test.py           Pre-flight API key validation
@@ -240,7 +263,7 @@ HADES/
     en_GB-alan-medium.onnx      Piper TTS voice model (gitignored, auto-downloaded)
     en_GB-alan-medium.onnx.json Piper voice config (gitignored, auto-downloaded)
   tests/
-    test_route.py         24 unit tests for route() (pytest)
+    test_route.py         24 unit tests for router.route() (pytest)
   docs/
     01-PRD.md · 02-TRD.md · 03-AppFlow.md · 04-UIUXDesignBrief.md
     05-BackendSchema.md · 06-ImplementationPlan.md · 07-Supabase-Memory.md
