@@ -45,7 +45,7 @@ def embed(text: str) -> list:
 def sign_in(email: str, password: str) -> dict:
     """Sign in with email + password. Returns the session dict."""
     result = get_client().auth.sign_in_with_password({"email": email, "password": password})
-    return result.session.model_dump()
+    return result.session.model_dump(mode="json")
 
 
 def sign_up(email: str, password: str) -> dict:
@@ -53,7 +53,7 @@ def sign_up(email: str, password: str) -> dict:
     {"pending_confirmation": True} when email confirmation is required."""
     result = get_client().auth.sign_up({"email": email, "password": password})
     if result.session:
-        return result.session.model_dump()
+        return result.session.model_dump(mode="json")
     return {"pending_confirmation": True}
 
 

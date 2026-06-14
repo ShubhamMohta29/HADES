@@ -1,7 +1,7 @@
 ================================================================================
 HADES — Human Assistance and Decision Engineering System
 Project Index & Status
-Last updated: 2026-06-02
+Last updated: 2026-06-14
 ================================================================================
 
 OVERVIEW
@@ -64,12 +64,15 @@ WHAT HAS BEEN BUILT (complete — v0.x)
                         Memory: save_message, load_recent, retrieve_relevant,
                                 clear_memory_db
                         Util: is_available(), embed()
+                      sign_in/sign_up use model_dump(mode='json') to ensure
+                      JSON-safe session serialization (datetime → ISO strings).
   - gui.py            pywebview window, Python↔JS bridge, status/message helpers,
                       add_help_card(); full auth flow: on load, checks
                       ~/.jarvis/session.json for a valid token and restores the
                       session silently; if not found, shows login panel; HadesAPI
-                      exposes login(), signup(), magic_link(), skipLogin();
+                      exposes login(), register(), magic_link(), skip_login();
                       session written to ~/.jarvis/session.json on success.
+                      All JS error injection uses json.dumps() (safe for any char).
 
 [FRONTEND]
   - frontend/index.html   Single-page dark sci-fi UI — animated orb with 4
@@ -77,7 +80,8 @@ WHAT HAS BEEN BUILT (complete — v0.x)
                           (standby / sleeping / listening / thinking / speaking),
                           scrollable chat log, text input bar, help card
                           component (.help-card), login panel (email + password
-                          form; magic link option; skip button for local mode)
+                          form; magic link button with showMagicLinkSent()
+                          confirmation; signup panel; skip button for local mode)
 
 [COMMANDS]
   - commands.py       Volume (set/up/down/mute via pycaw + pyautogui), time &
@@ -87,7 +91,10 @@ WHAT HAS BEEN BUILT (complete — v0.x)
                       via _use_db(user_id) — falls back to notes.txt when no
                       Supabase), note deletion (delete_last_note, delete_notes
                       by category or all), timed reminders, web search, app
-                      launcher, website opener, CPU/RAM/disk, HELP_HTML constant
+                      launcher, website opener, CPU/RAM/disk, HELP_HTML constant.
+                      set_volume() uses getattr(speakers, '_dev', speakers) to
+                      unwrap the pycaw AudioDevice wrapper before calling Activate
+                      (compatible with both old and new pycaw versions).
 
 [INTEGRATIONS]
   - weather.py        OpenWeatherMap — current weather by city
@@ -115,14 +122,15 @@ WHAT HAS BEEN BUILT (complete — v0.x)
                       → .env. All steps idempotent (skips if already present).
   - setup.py          pip install -e . support; entry point `hades = main:main`
   - supabase_schema.sql  SQL to run in Supabase SQL editor: creates notes and
-                      conversation_memory tables, RLS policies, match_memory()
-                      pgvector cosine-search function.
+                      conversation_memory tables (role column has CHECK constraint),
+                      RLS policies, match_memory() pgvector cosine-search function,
+                      IVFFlat index on embedding column for fast similarity search.
   - run_once_migrate_notes.py  Imports existing notes.txt into Supabase (one-time
                       migration); preserves timestamps + categories; renames
                       notes.txt → notes.txt.bak on success.
   - smoke_test.py     Pre-flight API key check: Groq / OpenWeatherMap / NewsAPI /
-                      Spotify / Supabase; PASS/FAIL/SKIP per key; exits 1 on
-                      any failure.
+                      Spotify / Supabase (auth endpoint + schema table existence);
+                      PASS/FAIL/SKIP per key; exits 1 on any failure.
 
 [TESTS]
   - tests/test_route.py   24 unit tests for main.py:route() — all routing
@@ -247,6 +255,23 @@ KNOWN ISSUES / BUGS
 --------------------------------------------------------------------------------
 
   - None currently documented. File bugs here as discovered.
+
+  FIXED (Session 009)
+  - Volume commands crash with AttributeError 'AudioDevice' object has no
+    attribute 'Activate': newer pycaw wraps the COM device in an AudioDevice
+    object; set_volume() now unwraps it with getattr(_dev). (commands.py)
+  - Session saved to ~/.jarvis/session.json crashes with TypeError on datetime
+    fields: sign_in/sign_up now use model_dump(mode='json'). (db.py)
+  - JS error injection via f-string could silently produce broken JS for
+    messages with apostrophes, backticks, or newlines: switched to json.dumps().
+    (gui.py)
+  - Magic link button missing from login panel UI despite backend support;
+    magic_link() method also missing from HadesAPI. Both now added. (gui.py,
+    frontend/index.html)
+  - IVFFlat index and role CHECK constraint missing from supabase_schema.sql
+    (were specified in doc 07 but not in the SQL file). Both added. (supabase_schema.sql)
+  - smoke_test.py Supabase check only tested auth endpoint reachability, not
+    whether the schema had been run. Now also queries both tables. (smoke_test.py)
 
   FIXED (Session 007)
   - Audio stuttering during Piper TTS playback: sample-rate mismatch (Piper

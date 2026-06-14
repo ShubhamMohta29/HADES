@@ -10,6 +10,89 @@ Format:
   NEXT        What to pick up next session
 
 --------------------------------------------------------------------------------
+SESSION 009 — 2026-06-14
+--------------------------------------------------------------------------------
+WHAT
+  Two bug fixes and a batch of Supabase connection / schema improvements.
+
+  BUG FIX — VOLUME CONTROL CRASH (pycaw AudioDevice.Activate)
+  - Root cause: newer versions of pycaw changed AudioUtilities.GetSpeakers() to
+    return an AudioDevice wrapper object instead of a raw IMMDevice COM object.
+    set_volume() called .Activate() directly on the wrapper, which doesn't have
+    that method, causing AttributeError on every volume command.
+  - Fix: commands.py set_volume() now calls getattr(speakers, '_dev', speakers)
+    to unwrap the AudioDevice if present, then calls .Activate() on the underlying
+    COM object. Backward-compatible with older pycaw versions that returned the
+    COM object directly.
+
+  SUPABASE — SESSION SERIALIZATION FIX
+  - Root cause: db.py sign_in() and sign_up() called result.session.model_dump()
+    (Pydantic v2 default), which returns datetime objects for timestamp fields.
+    gui.py then calls json.dump() to write the session to ~/.jarvis/session.json,
+    which crashed with TypeError: Object of type datetime is not JSON serializable.
+  - Fix: changed both calls to model_dump(mode='json'), which serializes datetimes
+    as ISO-8601 strings and all other fields to JSON-native types.
+
+  SUPABASE — JS ERROR INJECTION HARDENING
+  - All evaluate_js() calls that inject error messages into the frontend now use
+    json.dumps(str(e)) instead of manual replace("'", "\\'"). The previous approach
+    would silently produce broken JS for messages containing backticks, newlines,
+    or multi-byte characters.
+  - Affects: gui.py login(), register() error paths.
+
+  SUPABASE — MAGIC LINK UI (was backend-only, now wired end-to-end)
+  - db.py already had sign_in_magic_link(). gui.py had the method stub documented
+    but it was missing from the actual HadesAPI class.
+  - Added magic_link(email) to HadesAPI in gui.py.
+  - Added "SEND MAGIC LINK (PASSWORDLESS)" button to the login panel in
+    frontend/index.html. On click, validates that an email is entered, calls
+    pywebview.api.magic_link(email), then shows a "CHECK YOUR EMAIL" confirmation
+    and hides the button.
+  - Added window.showMagicLinkSent() JS function called by the Python side on
+    success.
+
+  SUPABASE SCHEMA — COMPLETENESS
+  - Added CHECK (role IN ('user', 'assistant')) constraint to conversation_memory
+    table. Was specified in the docs but missing from supabase_schema.sql.
+  - Added IVFFlat index on conversation_memory.embedding (vector_cosine_ops,
+    lists=100). Was documented in doc 07 §3.2 but missing from the SQL file.
+    Without this index every match_memory() call performs a full table scan.
+    Added a note that IVFFlat requires at least one row; the index creation is
+    safe to re-run (CREATE INDEX IF NOT EXISTS).
+
+  SMOKE TEST — SCHEMA VERIFICATION
+  - smoke_test.py Supabase check now queries both notes and conversation_memory
+    tables (SELECT id LIMIT 1) after verifying the auth endpoint. A missing table
+    (schema not run) raises a PostgrestException, which surfaces as a clear
+    error message: "Table 'X' not found — did you run supabase_schema.sql?"
+    Previously the check only verified the auth endpoint was reachable.
+
+FILES MODIFIED
+  commands.py         set_volume(): getattr(_dev) unwrap for pycaw compatibility
+  db.py               sign_in/sign_up: model_dump(mode='json') for JSON safety
+  gui.py              login/register: json.dumps() error injection; added
+                      magic_link() method to HadesAPI
+  frontend/index.html Magic link button + showMagicLinkSent() JS function added
+                      to login panel
+  supabase_schema.sql role CHECK constraint; IVFFlat index; explanatory comment
+  smoke_test.py       Supabase check extended to verify notes + conversation_memory
+                      tables exist
+  docs/index.txt      Known issues updated (pycaw fixed); file descriptions updated
+  docs/05-BackendSchema.md  GUI bridge table updated (magic_link); JS eval note
+  docs/06-ImplementationPlan.md  Phase 5 pycaw bug fix noted
+  docs/07-Supabase-Memory.md  Schema §3.2 updated (IVFFlat index, role CHECK);
+                              smoke_test entry updated; bug-fix section added
+  docs/session_log.txt  This entry
+
+NEXT
+  - Phase 14 — Neural Wake Word (openWakeWord): replace fuzzy-STT polling loop
+    with a local neural acoustic model; see doc 06 Phase 14 for full spec.
+  - Phase 15 — Continuous Conversation: hold-open follow-up window after each
+    reply; depends on Phase 14 for reliable detection.
+  - Phase 16 — Action Confirmation Gate: destructive commands require explicit
+    spoken/clicked confirmation before executing.
+
+--------------------------------------------------------------------------------
 SESSION 008 — 2026-06-02
 --------------------------------------------------------------------------------
 WHAT

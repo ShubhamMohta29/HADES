@@ -289,9 +289,11 @@ client.rpc("match_memory", {
 |---|---|---|
 | `api.send_message(text)` | User clicks SEND or presses Enter | Route text command |
 | `api.login(email, password)` | User submits login form | Sign in with credentials |
-| `api.signup(email, password)` | User submits signup form | Create account |
-| `api.magic_link(email)` | User clicks MAGIC LINK button | Send OTP email |
+| `api.register(email, password)` | User submits signup form | Create account |
+| `api.magic_link(email)` | User clicks MAGIC LINK button | Send OTP email; shows `showMagicLinkSent()` on success |
 | `api.skip_login()` | User clicks SKIP — LOCAL MODE | Start without auth |
+
+> **JS injection safety**: all `evaluate_js()` calls that inject Python values use `json.dumps(str(e))` rather than f-string escaping. This correctly handles apostrophes, backticks, newlines, and multi-byte characters.
 
 ---
 

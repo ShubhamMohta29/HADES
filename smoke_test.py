@@ -105,11 +105,19 @@ def _check_supabase(key):
         raise ValueError("SUPABASE_URL not set")
     from supabase import create_client
     sb = create_client(supabase_url, key)
-    # A simple anonymous ping — just fetching zero rows from a non-existent
-    # table would raise; instead check the auth endpoint works.
+    # 1. Auth endpoint reachable
     sb.auth.get_session()
+    # 2. Schema: required tables exist (RLS returns empty rows — that's fine;
+    #    missing tables raise a PostgrestException)
+    for table in ("notes", "conversation_memory"):
+        try:
+            sb.table(table).select("id").limit(1).execute()
+        except Exception as e:
+            raise RuntimeError(
+                f"Table '{table}' not found — did you run supabase_schema.sql? ({e})"
+            ) from e
 
-check("Supabase", "SUPABASE_ANON_KEY", _check_supabase)
+check("Supabase (auth + schema)", "SUPABASE_ANON_KEY", _check_supabase)
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 print("=" * 40)

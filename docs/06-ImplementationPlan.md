@@ -60,7 +60,7 @@
 ## Phase 5: PC Commands ✅
 **Goal**: Voice/text control of Windows system functions.
 
-- [x] Volume: set to %, volume up/down/mute (pycaw + pyautogui fallback)
+- [x] Volume: set to %, volume up/down/mute (pycaw + pyautogui fallback) — `set_volume()` uses `getattr(speakers, '_dev', speakers)` to unwrap the AudioDevice wrapper introduced in newer pycaw versions before calling `Activate()` (Session 009 fix)
 - [x] Time and date queries
 - [x] Battery status (psutil)
 - [x] Screenshot to Desktop (pyautogui)
@@ -175,7 +175,7 @@
 - [x] Thread `user_id` through `main.py` — `on_auth_complete` callback; `hades_loop()` and `handle_text_command()` both pass `user_id` to `route()`
 - [x] Add note deletion to `route()` — three regex branches (last note, by category, all notes) mapped to `commands.delete_last_note` / `commands.delete_notes`
 - [x] Write `run_once_migrate_notes.py` — one-time import of `notes.txt` into Supabase; preserves timestamps + category tags; renames file to `.bak`
-- [x] Write `smoke_test.py` — pre-flight API key validation for Groq, OpenWeatherMap, NewsAPI, Spotify, Supabase
+- [x] Write `smoke_test.py` — pre-flight API key validation for Groq, OpenWeatherMap, NewsAPI, Spotify, Supabase (auth endpoint + schema table existence check for `notes` and `conversation_memory`)
 - [x] Write `supabase_schema.sql` — SQL file for Supabase SQL editor (tables, RLS, `match_memory` function)
 - [x] Remove `google-generativeai` from `requirements.txt` (unused since vision migrated to Groq in Session 001)
 - [x] Update `.gitignore` — add `face_encodings.pkl`, `notes.txt.bak`

@@ -22,7 +22,7 @@ create policy "Users manage their own notes"
 create table if not exists conversation_memory (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid references auth.users on delete cascade not null,
-  role       text not null,     -- 'user' or 'assistant'
+  role       text not null check (role in ('user', 'assistant')),
   content    text not null,
   embedding  vector(384),
   created_at timestamptz default now()
@@ -31,7 +31,16 @@ alter table conversation_memory enable row level security;
 create policy "Users manage their own memory"
   on conversation_memory for all using (auth.uid() = user_id);
 
--- 4. Semantic search RPC (called by db.retrieve_relevant)
+-- 4. IVFFlat index for fast cosine similarity search on embeddings.
+--    lists = 100 is a reasonable default up to ~1M rows; tune if needed.
+--    NOTE: IVFFlat requires at least one row to build. Run after inserting data
+--    if this fails with "training data must have at least 1 row".
+create index if not exists conversation_memory_embedding_idx
+  on conversation_memory
+  using ivfflat (embedding vector_cosine_ops)
+  with (lists = 100);
+
+-- 5. Semantic search RPC (called by db.retrieve_relevant)
 create or replace function match_memory(
   query_embedding vector(384),
   match_user_id   uuid,

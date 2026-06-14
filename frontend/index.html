@@ -405,6 +405,8 @@
         <input id="login-pass" type="password" placeholder="PASSWORD" autocomplete="current-password" />
         <button id="login-btn" class="login-btn">AUTHENTICATE</button>
         <div id="login-error" class="login-error"></div>
+        <button id="magic-link-btn" class="login-skip">SEND MAGIC LINK (PASSWORDLESS)</button>
+        <div id="magic-link-sent" style="display:none;color:#00e5ff;font-size:10px;letter-spacing:1px;text-align:center;line-height:1.6">CHECK YOUR EMAIL FOR A SIGN-IN LINK.</div>
         <button id="goto-signup" class="login-skip">NEW USER? CREATE ACCOUNT</button>
         <button id="login-skip" class="login-skip">SKIP — LOCAL MODE</button>
       </div>
@@ -562,6 +564,23 @@
   document.getElementById("login-pass").addEventListener("keydown", function(e) {
     if (e.key === "Enter") document.getElementById("login-btn").click();
   });
+
+  document.getElementById("magic-link-btn").addEventListener("click", function() {
+    var email = document.getElementById("login-email").value.trim();
+    if (!email) {
+      window.showLoginError("Enter your email address first.");
+      return;
+    }
+    document.getElementById("login-error").textContent = "";
+    if (window.pywebview && window.pywebview.api) {
+      window.pywebview.api.magic_link(email);
+    }
+  });
+
+  window.showMagicLinkSent = function() {
+    document.getElementById("magic-link-sent").style.display = "block";
+    document.getElementById("magic-link-btn").style.display = "none";
+  };
 
   // ── Panel switching ────────────────────────────────────────────────────────
   document.getElementById("goto-signup").addEventListener("click", function() {

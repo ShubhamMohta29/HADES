@@ -78,11 +78,15 @@ CREATE TABLE conversation_memory (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Vector similarity index (cosine distance, IVFFlat for speed at scale)
-CREATE INDEX ON conversation_memory
+-- Vector similarity index (cosine distance, IVFFlat for speed at scale).
+-- Requires at least one row to build; safe to re-run (IF NOT EXISTS).
+CREATE INDEX IF NOT EXISTS conversation_memory_embedding_idx
+  ON conversation_memory
   USING ivfflat (embedding vector_cosine_ops)
   WITH (lists = 100);
 ```
+
+> Both the `role` CHECK constraint and the IVFFlat index are included in `supabase_schema.sql` (added Session 009 — they were documented here but missing from the SQL file).
 
 ### 3.3 Row-Level Security
 
@@ -204,6 +208,7 @@ Centralises all Supabase interaction. No other file imports `supabase` directly.
 - Notes: `get_note_categories`, `delete_last_note_db`, `delete_notes_db` (additions)
 - Memory: `load_recent`, `clear_memory_db` (additions)
 - Lazy init for both client and embedder (avoids import-time cost)
+- `sign_in` / `sign_up` use `model_dump(mode='json')` — ensures the session dict written to `~/.jarvis/session.json` contains only JSON-native types (datetimes serialized as ISO strings, not Python `datetime` objects)
 
 ### 6.2 `brain.py` changes (shipped)
 

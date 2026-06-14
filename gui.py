@@ -83,8 +83,7 @@ class HadesAPI:
         except Exception as e:
             log.warning("Login failed: %s", e)
             if self._window:
-                msg = str(e).replace("\\", "\\\\").replace("'", "\\'")
-                self._window.evaluate_js(f"window.showLoginError('{msg}')")
+                self._window.evaluate_js(f"window.showLoginError({json.dumps(str(e))})")
         return {"ok": True}
 
     def register(self, email: str, password: str):
@@ -108,8 +107,20 @@ class HadesAPI:
         except Exception as e:
             log.warning("Registration failed: %s", e)
             if self._window:
-                msg = str(e).replace("\\", "\\\\").replace("'", "\\'")
-                self._window.evaluate_js(f"window.showSignupError('{msg}')")
+                self._window.evaluate_js(f"window.showSignupError({json.dumps(str(e))})")
+        return {"ok": True}
+
+    def magic_link(self, email: str):
+        """Called from JS when user requests a passwordless magic-link email."""
+        try:
+            import db
+            db.sign_in_magic_link(email)
+            if self._window:
+                self._window.evaluate_js("window.showMagicLinkSent()")
+        except Exception as e:
+            log.warning("Magic link failed: %s", e)
+            if self._window:
+                self._window.evaluate_js(f"window.showLoginError({json.dumps(str(e))})")
         return {"ok": True}
 
     def skip_login(self):
