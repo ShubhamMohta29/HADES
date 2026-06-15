@@ -172,6 +172,12 @@
     color: #1a3a44;
     text-shadow: none;
   }
+  body[data-status="followup"] .orb {
+    animation: pulse 2s ease-in-out infinite;
+    filter: brightness(0.65) hue-rotate(20deg);
+    box-shadow: 0 0 22px rgba(0, 229, 255, 0.4), 0 0 55px rgba(0, 229, 255, 0.12);
+  }
+  body[data-status="followup"] .status { color: #00a8c0; text-shadow: 0 0 8px #00a8c0; }
 
   .chat {
     flex: 1;

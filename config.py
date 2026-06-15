@@ -27,6 +27,18 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 
 # Wake word settings
 # Comma-separated list of wake words (e.g. "hades,jarvis"). First is primary.
-WAKE_WORDS_ENV  = os.getenv("WAKE_WORDS", "hades")
+WAKE_WORDS_ENV    = os.getenv("WAKE_WORDS", "hades")
 # Seconds to ignore a second wake-word trigger after the first (prevents echo double-fire)
-WAKE_DEBOUNCE   = float(os.getenv("WAKE_DEBOUNCE", "2.5"))
+WAKE_DEBOUNCE     = float(os.getenv("WAKE_DEBOUNCE", "2.5"))
+# Neural wake word (Phase 14) — set to false to force STT-based fallback
+NEURAL_WAKE_WORD  = os.getenv("NEURAL_WAKE_WORD", "true").lower() == "true"
+# Path to a custom openwakeword .onnx model; empty = use all built-in default models
+WAKE_MODEL        = os.getenv("WAKE_MODEL", "")
+
+# Continuous conversation (Phase 15)
+# Seconds of silence after a reply before returning to standby
+FOLLOWUP_TIMEOUT  = float(os.getenv("FOLLOWUP_TIMEOUT", "15"))
+
+# Action confirmation gate (Phase 16)
+# Seconds before an unconfirmed destructive action is auto-cancelled
+CONFIRM_TIMEOUT   = float(os.getenv("CONFIRM_TIMEOUT", "10"))

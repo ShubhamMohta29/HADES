@@ -23,3 +23,5 @@ soundfile
 # Supabase + semantic memory (optional — only needed if SUPABASE_URL is set)
 supabase
 sentence-transformers
+# Neural wake word (Phase 14) — optional; falls back to STT if not installed
+openwakeword

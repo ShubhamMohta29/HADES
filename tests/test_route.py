@@ -42,6 +42,10 @@ _cfg.FACE_AUTH_ENABLED     = False
 _cfg.PIPER_MODEL           = ""
 _cfg.WAKE_WORDS_ENV        = "hades"
 _cfg.WAKE_DEBOUNCE         = 2.5
+_cfg.NEURAL_WAKE_WORD      = False
+_cfg.WAKE_MODEL            = ""
+_cfg.FOLLOWUP_TIMEOUT      = 15.0
+_cfg.CONFIRM_TIMEOUT       = 10.0
 _cfg.SUPABASE_URL          = ""
 _cfg.SUPABASE_ANON_KEY     = ""
 sys.modules["config"] = _cfg
@@ -290,3 +294,91 @@ def test_fallback_to_brain(gui):
             result = call_route("what is the meaning of life", gui)
     m.assert_called_once_with("what is the meaning of life", user_id=None)
     assert result == "That's an interesting question."
+
+
+# ── Action confirmation gate (Phase 16) ──────────────────────────────────────
+
+def test_shutdown_returns_confirm_prompt(gui):
+    result = call_route("shutdown", gui)
+    assert "sure" in result.lower() or "confirm" in result.lower()
+    import router
+    assert router._pending_state.get("action") == "confirm_action"
+    assert "shut down" in router._pending_state.get("description", "")
+
+
+def test_restart_returns_confirm_prompt(gui):
+    result = call_route("restart the computer", gui)
+    assert "sure" in result.lower() or "confirm" in result.lower()
+    import router
+    assert router._pending_state.get("action") == "confirm_action"
+    assert "restart" in router._pending_state.get("description", "")
+
+
+def test_cancel_shutdown_skips_confirm_gate(gui):
+    with patch("router.handle_command", return_value="Shutdown cancelled, Sir.") as m:
+        result = call_route("cancel shutdown", gui)
+    m.assert_called_once()
+    assert "Cancelled" in result or "cancelled" in result
+
+
+def test_confirm_yes_executes_shutdown(gui):
+    import router
+    router._pending_state.update({
+        "action":      "confirm_action",
+        "callable":    lambda: "Shutting down now, Sir.",
+        "description": "shut down the computer",
+        "set_at":      __import__("time").time(),
+    })
+    result = call_route("yes", gui)
+    assert "Shutting down" in result
+    assert router._pending_state == {}
+
+
+def test_confirm_no_cancels(gui):
+    import router
+    router._pending_state.update({
+        "action":      "confirm_action",
+        "callable":    lambda: "BOOM",
+        "description": "shut down the computer",
+        "set_at":      __import__("time").time(),
+    })
+    result = call_route("no", gui)
+    assert result == "Cancelled, Sir."
+    assert router._pending_state == {}
+
+
+def test_confirm_timeout_auto_cancels(gui):
+    import router
+    router._pending_state.update({
+        "action":      "confirm_action",
+        "callable":    lambda: "BOOM",
+        "description": "shut down the computer",
+        "set_at":      0.0,  # far in the past → always expired
+    })
+    result = call_route("yes please", gui)
+    assert "timed out" in result.lower() or "cancelled" in result.lower()
+    assert router._pending_state == {}
+
+
+def test_delete_all_notes_returns_confirm_prompt(gui):
+    result = call_route("delete all my notes", gui)
+    assert "sure" in result.lower() or "confirm" in result.lower()
+    import router
+    assert router._pending_state.get("action") == "confirm_action"
+
+
+def test_delete_category_notes_returns_confirm_prompt(gui):
+    result = call_route("delete my work notes", gui)
+    assert "sure" in result.lower() or "confirm" in result.lower()
+    import router
+    assert router._pending_state.get("action") == "confirm_action"
+    assert "work" in router._pending_state.get("description", "")
+
+
+def test_delete_last_note_no_confirm(gui):
+    """Deleting the last note must NOT trigger the confirm gate."""
+    with patch("router.delete_last_note", return_value="Done, Sir. Last note deleted.") as m:
+        result = call_route("delete the last note", gui)
+    m.assert_called_once()
+    import router
+    assert router._pending_state.get("action") != "confirm_action"

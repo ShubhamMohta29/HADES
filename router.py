@@ -6,6 +6,8 @@ route() itself never needs to change (Open/Closed Principle).
 """
 
 import re
+import time
+import functools
 import logging
 
 from brain import think, clear_memory
@@ -17,7 +19,7 @@ from commands import (
     delete_notes,
     HELP_HTML,
 )
-from config import DEFAULT_CITY
+from config import DEFAULT_CITY, CONFIRM_TIMEOUT
 
 log = logging.getLogger("hades.router")
 
@@ -90,6 +92,16 @@ _STOP_WORDS = frozenset({
     "put", "under", "please", "file", "save", "note", "a",
 })
 
+# Confirm / deny keywords for the action confirmation gate (Phase 16)
+_CONFIRM_WORDS = frozenset({
+    "yes", "yeah", "yep", "confirm", "do it", "go ahead",
+    "proceed", "sure", "affirmative",
+})
+_DENY_WORDS = frozenset({
+    "no", "nope", "cancel", "stop", "abort", "never mind",
+    "nevermind", "don't", "dont",
+})
+
 
 def _suggest_category(note_content: str, categories: list) -> str:
     try:
@@ -129,8 +141,29 @@ def _start_note_flow(note_content: str, user_id: str = None) -> str:
             f"You have: {cats_display}. I suggest '{suggested}', Sir.")
 
 
+def _handle_confirm_state(lower: str) -> str:
+    """Handle a pending confirm_action — yes executes, no cancels, timeout auto-cancels."""
+    if time.time() - _pending_state.get("set_at", 0) > CONFIRM_TIMEOUT:
+        _pending_state.clear()
+        return "Confirmation timed out. Action cancelled, Sir."
+    if any(w in lower for w in _CONFIRM_WORDS):
+        fn   = _pending_state["callable"]
+        _pending_state.clear()
+        return fn() or "Done, Sir."
+    if any(w in lower for w in _DENY_WORDS):
+        _pending_state.clear()
+        return "Cancelled, Sir."
+    desc = _pending_state["description"]
+    return f"Please confirm — {desc}? Say 'yes' to proceed or 'no' to cancel, Sir."
+
+
 def _handle_pending_state(lower: str) -> str | None:
-    if _pending_state.get("action") != "save_note":
+    action = _pending_state.get("action")
+
+    if action == "confirm_action":
+        return _handle_confirm_state(lower)
+
+    if action != "save_note":
         _pending_state.clear()
         return None
 
@@ -207,14 +240,35 @@ class _DeleteNoteHandler(_Handler):
     def handle(self, text, lower, gui, user_id):
         if self._LAST.search(lower):
             return delete_last_note(user_id=user_id)
+        if self._ALL.search(lower):
+            _uid = user_id
+            _pending_state.update({
+                "action":      "confirm_action",
+                "callable":    functools.partial(delete_notes, user_id=_uid),
+                "description": "delete all your notes",
+                "set_at":      time.time(),
+            })
+            return "Are you sure you want to delete all your notes, Sir? This cannot be undone."
         m = self._CAT.search(lower)
         if m:
             cat = m.group(2)
             if cat not in {"all", "my", "the", "a"}:
-                return delete_notes(cat, user_id=user_id)
-            return delete_notes(user_id=user_id)
-        if self._ALL.search(lower):
-            return delete_notes(user_id=user_id)
+                _uid = user_id
+                _pending_state.update({
+                    "action":      "confirm_action",
+                    "callable":    functools.partial(delete_notes, cat, user_id=_uid),
+                    "description": f"delete all your {cat} notes",
+                    "set_at":      time.time(),
+                })
+                return f"Are you sure you want to delete all your {cat} notes, Sir?"
+            _uid = user_id
+            _pending_state.update({
+                "action":      "confirm_action",
+                "callable":    functools.partial(delete_notes, user_id=_uid),
+                "description": "delete all your notes",
+                "set_at":      time.time(),
+            })
+            return "Are you sure you want to delete all your notes, Sir? This cannot be undone."
         return None
 
 
@@ -274,6 +328,32 @@ class _SpotifyHandler(_Handler):
         return _spotify(text) or None
 
 
+class _PowerConfirmHandler(_Handler):
+    """Intercept destructive power commands (shutdown/restart) and require confirmation."""
+    _SHUTDOWN = re.compile(r"\bshutdown\b|\bshut\s+down\b")
+    _RESTART  = re.compile(r"\brestart\b")
+
+    def can_handle(self, text, lower):
+        if "cancel" in lower:
+            return False
+        return bool(self._SHUTDOWN.search(lower)) or bool(self._RESTART.search(lower))
+
+    def handle(self, text, lower, gui, user_id):
+        if self._SHUTDOWN.search(lower):
+            desc = "shut down the computer"
+        elif self._RESTART.search(lower):
+            desc = "restart the computer"
+        else:
+            return None
+        _pending_state.update({
+            "action":      "confirm_action",
+            "callable":    functools.partial(handle_command, text),
+            "description": desc,
+            "set_at":      time.time(),
+        })
+        return f"Are you sure you want to {desc}, Sir?"
+
+
 class _PCCommandHandler(_Handler):
     def can_handle(self, text, lower):
         return True
@@ -300,6 +380,7 @@ _HANDLERS: list[_Handler] = [
     _StockHandler(),
     _CryptoHandler(),
     _SpotifyHandler(),
+    _PowerConfirmHandler(),
     _PCCommandHandler(),
 ]
 

@@ -7,7 +7,7 @@ import time
 from voice import listen, speak, wait_for_wake_word, MIC_ERROR
 from router import route, _pending_state
 from gui import HadesGUI
-from config import FACE_AUTH_ENABLED
+from config import FACE_AUTH_ENABLED, FOLLOWUP_TIMEOUT
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,8 +55,11 @@ def hades_loop(gui, user_id: str = None):
                 gui.add_message("Hades", "Yes, Sir?")
 
             _mic_err_streak = 0
+            _in_followup = False
+            _followup_silence_start = 0.0
+
             while True:
-                gui.set_status("listening")
+                gui.set_status("followup" if _in_followup else "listening")
                 user_input = listen()
 
                 if user_input is MIC_ERROR:
@@ -73,8 +76,13 @@ def hades_loop(gui, user_id: str = None):
                 _mic_err_streak = 0
 
                 if not user_input:
+                    if _in_followup and time.time() - _followup_silence_start > FOLLOWUP_TIMEOUT:
+                        _in_followup = False
+                        gui.add_system_message("Follow-up window closed. Say my name to activate.")
+                        break
                     continue
 
+                _in_followup = False
                 gui.add_message("You", user_input)
 
                 if any(w in user_input.lower() for w in SLEEP_WORDS):
@@ -90,6 +98,9 @@ def hades_loop(gui, user_id: str = None):
                 gui.set_status("speaking")
                 speak(response)
                 gui.add_message("Hades", response)
+
+                _in_followup = True
+                _followup_silence_start = time.time()
 
         except KeyboardInterrupt:
             log.info("Shutting down...")
