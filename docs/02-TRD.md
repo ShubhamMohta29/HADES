@@ -18,6 +18,7 @@
 - **Memory** — two modes depending on configuration:
   - *Supabase mode* (when `SUPABASE_URL` set + user logged in): two-tier — last 12 messages (recency) + top 5 semantically relevant past turns via pgvector cosine search
   - *Local fallback*: JSON list in `conversation_history.json`; trimmed to system prompt + last 40 messages (20 turns)
+- **Streaming (Phase 17 — planned)**: `brain.py:think_stream()` will call Groq with `stream=True` and yield sentence-boundary chunks; `voice/tts.py:speak_streaming()` will pipe each chunk to Piper and play sequentially; `STREAM_CHUNK_MIN_WORDS` (default: 6) prevents single-word fragments causing choppy audio
 
 ## Text-to-Speech
 - **Piper TTS** (offline, neural) — `en_GB-alan-medium.onnx` voice model
@@ -75,6 +76,7 @@
 | `numpy` | Audio buffer handling + resampling |
 | `requests` | HTTP calls (weather, news, crypto) |
 | `pytest` | Unit test runner (`tests/`) |
+| `PyInstaller` | Bundles HADES into a standalone Windows `.exe` (Phase 18 — dev dependency) |
 
 ## Folder Structure
 
@@ -108,8 +110,11 @@ HADES/
 │   ├── stocks.py              # yfinance + CoinGecko
 │   └── spotify.py             # Spotipy playback control + error summarization
 │
+├── action_log.py              # (Phase 19 — planned) rolling action log; log_action(); local JSON + optional Supabase
+├── voice/
+│   └── vad.py                 # (Phase 20 — planned) VoiceActivityDetector; RMS energy per 20 ms frame; interrupt event
 ├── scripts/
-│   ├── supabase_schema.sql    # SQL: notes + conversation_memory tables, match_memory RPC
+│   ├── supabase_schema.sql    # SQL: notes + conversation_memory + action_log tables, match_memory RPC
 │   ├── run_once_migrate_notes.py  # one-time notes.txt → Supabase migration
 │   └── smoke_test.py          # pre-flight API key validation
 ├── install.bat                # Windows one-command installer
@@ -148,6 +153,11 @@ NEURAL_WAKE_WORD        # "true" (default) to use openwakeword neural model; "fa
 WAKE_MODEL              # path to custom openwakeword .onnx model (optional; empty = all built-in models)
 FOLLOWUP_TIMEOUT        # seconds of silence after a reply before returning to standby (default: 15)
 CONFIRM_TIMEOUT         # seconds to wait for spoken confirmation on destructive commands (default: 10)
+STREAMING_TTS           # "true" (default) — stream Groq response to TTS as sentence chunks arrive (Phase 17)
+STREAM_CHUNK_MIN_WORDS  # minimum words before dispatching a chunk to TTS (default: 6) (Phase 17)
+ACTION_LOG_ENABLED      # "true" (default) — log all HADES actions to action_log.json (Phase 19)
+BARGE_IN_ENABLED        # "true" (default) — VAD thread interrupts TTS on voice detection (Phase 20)
+VAD_THRESHOLD           # RMS energy threshold for voice-activity detection (default: 500) (Phase 20)
 ```
 
 ## Constraints

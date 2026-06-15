@@ -26,9 +26,11 @@ Legend: ✅ shipped · 🔜 planned (see [Roadmap](#roadmap))
 | **Continuous conversation** | ✅ | Ask follow-ups without re-saying the wake word; configurable `FOLLOWUP_TIMEOUT` |
 | **Neural wake word** | ✅ | `openwakeword` local ONNX model; far fewer false triggers; STT fallback if absent |
 | **Action confirmation** | ✅ | Destructive actions (shutdown, restart, delete notes) require spoken confirmation |
-| **Barge-in / interruptible speech** | 🔜 | Talk over HADES to stop or redirect mid-sentence |
-| **Streaming responses** | 🔜 | Begin speaking as tokens arrive — lower perceived latency |
-| **Speaker identification** | 🔜 | Recognize *who* is speaking and load their profile/memory automatically |
+| **Streaming TTS** | 🔜 v1.1 | Begin speaking as Groq tokens arrive — sentence-chunked; perceived latency < 1 s |
+| **Action log** | 🔜 v1.1 | Rolling log of everything HADES does; "what did you do recently?" voice query |
+| **PyInstaller `.exe`** | 🔜 v1.1 | Standalone Windows bundle — no Python install required |
+| **Barge-in** | 🔜 v1.1 | VAD thread interrupts TTS mid-sentence when you start speaking |
+| **Speaker identification** | 🔜 v2.5 | Recognize *who* is speaking and load their profile/memory automatically |
 
 ### Knowledge & answers
 | Feature | Status | Description |
@@ -77,11 +79,11 @@ Legend: ✅ shipped · 🔜 planned (see [Roadmap](#roadmap))
 | Feature | Status | Description |
 |---|---|---|
 | **Local / offline mode** | 🔜 | Optional local LLM (Ollama) + fully-offline fallback for privacy/no-internet |
-| **Skill / plugin system** | 🔜 | Drop-in user skills via a simple manifest; community-extendable command set |
+| **Skill / plugin system** | 🔜 v2.0 | Drop-in user skills via a simple manifest; community-extendable command set |
 | **Action confirmation** | ✅ | Destructive actions (shutdown, restart, delete notes) require a spoken/clicked confirm |
-| **Untrusted-input handling** | 🔜 | Treat screen/web/news text as data, never as commands to auto-execute |
-| **Action log** | 🔜 | Reviewable history of what HADES did and when |
-| **Secret redaction** | 🔜 | Never read API keys / passwords aloud or into prompts |
+| **Untrusted-input handling** | 🔜 v1.1+ | Treat screen/web/news text as data, never as commands to auto-execute |
+| **Action log** | 🔜 v1.1 | Reviewable history of what HADES did and when; "recent actions" voice query |
+| **Secret redaction** | 🔜 v2.0 | Never read API keys / passwords aloud or into prompts |
 
 ---
 
@@ -89,7 +91,7 @@ Legend: ✅ shipped · 🔜 planned (see [Roadmap](#roadmap))
 
 **v1.0 (shipped):** voice loop, conversation + memory, weather/news/stocks/Spotify, PC control, screen vision, notes/reminders, auth, GUI, **neural wake word**, **continuous conversation**, **action confirmation gate**.
 
-**v1.1 — "Smoother JARVIS":** barge-in, streaming responses, PyInstaller `.exe` distribution, action log, untrusted-input handling, local/offline LLM option.
+**v1.1 — "Smoother JARVIS" (in planning):** streaming TTS (Phase 17), PyInstaller `.exe` distribution (Phase 18), action log (Phase 19), barge-in / interruptible speech (Phase 20).
 
 **v1.5 — "Life manager":** calendar + email (confirm gate already in place ✅), morning/evening briefings, routines/macros, timers/alarms, file search, notification awareness.
 

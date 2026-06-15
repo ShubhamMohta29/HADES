@@ -95,10 +95,36 @@ Destructive/irreversible actions (shutdown, restart, delete-all-notes, delete-ca
 
 ---
 
-## Nice to Have (Planned — later roadmap)
+## v1.1 — In Active Planning (Phases 17–20)
 
-- Barge-in / interruptible speech
-- Streaming TTS responses
+### Phase 17 — Streaming TTS
+Groq responses begin playing as tokens arrive. Sentence-chunk the stream: buffer tokens until a natural boundary (`.`, `!`, `?`, or ≥ 6-word clause), hand each chunk to Piper immediately, play chunks sequentially. Perceived latency drops from 2–4 s to < 1 s on long answers.
+
+- **Config**: `STREAMING_TTS` (bool, default `true`), `STREAM_CHUNK_MIN_WORDS` (int, default `6`)
+- **Files**: `brain.py` (`think_stream()`), `voice/tts.py` (`speak_streaming()`), `main.py`, `config.py`
+
+### Phase 18 — PyInstaller Distribution
+Bundle HADES into a Windows `.exe` — no Python, pip, or venv required. Key challenges: pycaw COM interface generation, pywebview CEF engine, openwakeword ONNX runtime, Piper binary inclusion. `config.py` learns to resolve paths via `sys._MEIPASS` when frozen.
+
+- **Deliverables**: `HADES.spec`, `build.bat`, documented bundle size
+- **Files**: `HADES.spec`, `build.bat`, `config.py`
+
+### Phase 19 — Action Log
+A rolling local (and optional Supabase) log of every action HADES takes. "What did you do recently?" returns the last 5–10 entries as a spoken list. Required audit trail before shipping calendar write and email send in v1.5.
+
+- **Config**: `ACTION_LOG_ENABLED` (bool, default `true`)
+- **New module**: `action_log.py`; new Supabase table `action_log`; new `_ActionLogHandler` in `router.py`
+
+### Phase 20 — Barge-in
+Voice-activity detection (VAD) thread runs during TTS playback. When mic energy exceeds `VAD_THRESHOLD` for 2+ consecutive frames, an interrupt event fires, TTS stops between chunks, and the new speech is captured and routed normally. Depends on Phase 17 (streaming gives natural chunk seams).
+
+- **Config**: `BARGE_IN_ENABLED` (bool, default `true`), `VAD_THRESHOLD` (int, default `500`)
+- **New file**: `voice/vad.py`; modified `voice/tts.py`, `main.py`
+
+---
+
+## Nice to Have (v2.0+ roadmap)
+
 - Calendar integration (Google Calendar read/create)
 - Email assistant (Gmail; sends only after confirmation)
 - Morning/evening briefings (proactive digest)
@@ -138,6 +164,10 @@ Destructive/irreversible actions (shutdown, restart, delete-all-notes, delete-ca
 - As a user, I want to ask follow-up questions without saying "HADES" again so a multi-turn conversation feels natural.
 - As a user, I want HADES to ask "Are you sure?" before shutting down my computer so I never trigger it by accident.
 - As a user, I want the wake word to fire reliably without false triggers from YouTube or TV audio playing in the background.
+- As a user, I want HADES to start speaking within a second of asking a question so it feels instant, not like it's thinking.
+- As a user, I want to say "stop" mid-sentence so I can interrupt and redirect without waiting for the full answer.
+- As a user, I want to ask "what did you do recently?" so I can audit what HADES has opened, saved, or changed.
+- As a user, I want to run HADES by double-clicking an exe so I can install it on a machine without setting up Python.
 
 ---
 

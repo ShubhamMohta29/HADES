@@ -71,7 +71,7 @@ If `FACE_AUTH_ENABLED=true`: face verification runs first inside `hades_loop()`.
 5. Mic captures audio → Google STT transcribes → message appears in chat as "You: ..."
 6. Orb shifts to **THINKING** state
 7. Router matches "weather" keyword → calls OpenWeatherMap → formats reply
-8. Orb shifts to **SPEAKING** state → Piper TTS plays response
+8. Orb shifts to **SPEAKING** state → Piper TTS plays response *(Phase 17: first sentence chunk begins playing within ~500 ms of Groq starting to stream)*
 9. Reply appears in chat as "HADES: ..."
 10. Loop enters **FOLLOW-UP** state — orb dims to `followup` CSS state; mic stays open for up to `FOLLOWUP_TIMEOUT` seconds of silence; user can ask follow-ups without re-saying "HADES"
 11. User says "sleep" / "goodbye" / "goodnight" / "stand by" / "that's all" → HADES says "Going to sleep, Sir" → orb enters **SLEEPING** state → mic remains open but only the wake word is processed; all other speech is discarded → user says "HADES" → HADES responds "I'm back, Sir" → resumes command mode
@@ -176,6 +176,45 @@ Triggers (voice or text): "sleep", "goodbye", "good bye", "goodnight", "good nig
 
 ---
 
+## Streaming TTS Flow (Phase 17 — planned)
+
+1. User speaks a command; router falls through to the LLM fallback (`brain.think_stream()`)
+2. Groq begins streaming tokens; `think_stream()` buffers them and yields sentence-boundary chunks
+3. On the **first chunk** (≥ `STREAM_CHUNK_MIN_WORDS` words): orb transitions from `thinking` to `speaking`; `speak_streaming()` begins Piper rendering and audio playback
+4. Subsequent chunks are rendered and queued while the previous chunk is still playing
+5. After the stream ends, `think_stream()` saves the full response to memory (Supabase or local JSON) — same path as `think()`
+6. If `STREAMING_TTS=false`: identical to current flow (full response buffered, then played as a single block)
+
+---
+
+## Barge-in Flow (Phase 20 — planned, depends on Phase 17)
+
+1. TTS playback begins (`speak_streaming()`)
+2. A `VoiceActivityDetector` thread (from `voice/vad.py`) is started concurrently; it opens a secondary pyaudio input stream and monitors RMS energy per 20 ms frame
+3. **No barge-in**: energy stays below `VAD_THRESHOLD`; TTS completes normally; VAD thread exits
+4. **Barge-in detected**: RMS energy exceeds `VAD_THRESHOLD` for 2+ consecutive frames → VAD sets `triggered` event → 300 ms debounce (to avoid TTS output triggering itself via acoustic echo)
+5. `speak_streaming()` checks `triggered` between chunks and exits early (current chunk finishes; next chunk is discarded)
+6. Main loop calls `listen()` immediately to capture the barge-in speech
+7. The captured input is routed normally through `route()`; `_pending_state` is preserved (barge-in during a confirm prompt still resolves correctly)
+8. If `BARGE_IN_ENABLED=false`: VAD thread is never started; TTS always plays to completion
+
+---
+
+## Action Log Flow (Phase 19 — planned)
+
+**Passive logging** (happens automatically):
+- After every `route()` call returns a non-None result, `log_action(action_type, description, user_id)` is called in a fire-and-forget thread
+- Writes to `action_log.json` (rolling 500 entries) and optionally to Supabase `action_log` table
+- No impact on response latency; failures are silently logged and do not affect the main loop
+
+**Active query**:
+1. User says "what did you do recently?" / "show action log" / "recent actions"
+2. `_ActionLogHandler` reads the last 5–10 entries from `action_log.json` (or Supabase)
+3. Returns a spoken summary: "In the last hour I: opened Chrome, saved a note under work, played jazz on Spotify, checked the weather in London."
+4. If `ACTION_LOG_ENABLED=false`: handler returns "Action logging is disabled, Sir." and no file is written
+
+---
+
 ## Action Confirmation Gate Flow (Phase 16)
 
 Triggered by: `shutdown`, `restart`, `delete all notes`, `delete [category] notes`.
@@ -224,6 +263,8 @@ Commands that bypass the gate: `cancel shutdown`, `lock` (both non-destructive, 
 | Wake word double-fire | Debounce (2.5 s default) silently ignores rapid re-trigger on both neural and STT paths |
 | Neural wake word error | Exception in `openwakeword` path → logged → falls back to `_stt_wait_for_wake_word()` for that call |
 | Confirm timeout | No voice input within `CONFIRM_TIMEOUT` seconds → auto-cancel on next interaction |
+| Streaming TTS mid-error (Phase 17) | Exception mid-stream → speak whatever has been buffered so far; log truncation |
+| VAD device conflict (Phase 20) | Secondary input stream fails to open during TTS → log warning; barge-in silently disabled for that turn |
 | Supabase auth error | Spoken error; falls back to local mode |
 | Supabase DB error | Logged; notes/memory fall back to flat-file silently |
 | Spotify 401 | "Spotify authentication has expired, Sir. Restart HADES to re-authenticate." |

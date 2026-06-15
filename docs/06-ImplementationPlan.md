@@ -222,7 +222,7 @@
 - [ ] No unhandled exceptions in a 30-minute voice session *(manual QA — ongoing)*
 - [ ] PyInstaller `.exe` bundle for distribution without Python *(v1.1)*
 
-**v1.1 goals** — barge-in, streaming TTS, PyInstaller distribution.
+**v1.1 goals** — Phases 17–20: streaming TTS, PyInstaller distribution, action log, barge-in.
 **v1.5 goals** — calendar integration, email assistant (requires confirm gate ✅ already done).
 
 ---
@@ -271,3 +271,73 @@
 - [x] Add `_cfg.CONFIRM_TIMEOUT = 10.0` to the test stub config so numeric comparisons work correctly
 
 **Done when**: All 33 tests pass; shutdown/restart/delete-all/delete-category require confirmation; delete-last and cancel-shutdown do not; timeout auto-cancels cleanly.
+
+---
+
+## Phase 17: Streaming TTS ⬜ (next)
+**Goal**: Begin speaking as Groq tokens arrive instead of waiting for the full response. Cuts perceived latency by 1–3 seconds on long answers — the single most noticeable UX improvement remaining.
+
+**Strategy**: sentence-chunk the Groq stream. Buffer incoming tokens until a natural speech boundary (`.`, `!`, `?`, `—`, or clause of ≥ 8 words ending a phrase); hand each chunk to Piper TTS immediately; play chunks sequentially. The user hears the first words within ~500 ms of Groq starting to respond.
+
+- [ ] Add `STREAMING_TTS` boolean env var to `config.py` and `.env.example` (default: `true`); `false` falls back to the current full-response path for debugging
+- [ ] Add `brain.py:think_stream(user_input, user_id)` — calls Groq with `stream=True`; yields sentence-boundary-split text chunks as they arrive; accumulates full response for memory storage after streaming ends; same memory lookup and history management as `think()`
+- [ ] Add `voice/tts.py:speak_streaming(chunks)` — accepts an iterable of text strings; for each chunk, calls the existing Piper render path and appends audio to the playback queue; non-blocking between chunks so the next chunk renders while the previous plays
+- [ ] Refactor `main.py:hades_loop()` — if `STREAMING_TTS`, call `think_stream()` + `speak_streaming()` together; orb transitions from `thinking` to `speaking` on first audio chunk rather than after the full response
+- [ ] `handle_text_command()` uses the same streaming path; GUI receives incremental `addMessage` calls so the chat log updates word-by-word (optional — can batch at sentence boundaries instead)
+- [ ] Graceful fallback: if the streaming path raises any exception mid-stream, catch it and speak whatever has been accumulated so far; log the truncation
+- [ ] Add `STREAM_CHUNK_MIN_WORDS` env var (default: `6`) — minimum word count before a chunk is dispatched to TTS; prevents sending single-word fragments that produce choppy audio
+- [ ] Test: voice round-trip perceived latency < 2 s for a 3-sentence response; streaming and non-streaming (`STREAMING_TTS=false`) produce identical final spoken text; no audio glitches between chunks
+
+**Done when**: "What's the weather in Tokyo?" response begins playing within 1 second of Groq starting to stream; the full sentence count is preserved; `STREAMING_TTS=false` works as before.
+
+---
+
+## Phase 18: PyInstaller Distribution ⬜
+**Goal**: Bundle HADES into a single Windows `.exe` so users can run it without installing Python, pip, or a virtual environment. Required for any wider distribution.
+
+**Key challenge**: HADES has many C-extension dependencies (pycaw/comtypes COM interfaces, pyaudio, openwakeword ONNX runtime, pywebview CEF browser engine, piper TTS) that need careful PyInstaller spec configuration.
+
+- [ ] Add `PyInstaller` to `requirements.txt` (dev dependency — not needed at runtime)
+- [ ] Create `HADES.spec` — single-file or single-directory bundle (single-directory preferred for Windows antivirus compatibility); include `frontend/index.html`, `voices/` dir, `.env.example`, `openwakeword` model files
+- [ ] Add hidden imports in spec: `pycaw`, `comtypes.gen`, `pyaudio`, `onnxruntime`, `openwakeword`, `sentence_transformers`, `spotipy`, `cv2`, `face_recognition` (optional), `pywebview` backends
+- [ ] Add data files in spec: `frontend/index.html`, `voices/`, `openwakeword` default model files, `onnxruntime` shared libs
+- [ ] Handle `comtypes` auto-generated COM interface files — these are written to a `comtypes/gen/` folder at runtime; configure `--runtime-tmpdir` or pre-generate them
+- [ ] Exclude dev-only paths from bundle: `tests/`, `docs/`, `.git/`, `scripts/`, `*.md`
+- [ ] Create `build.bat` — one-command build: `pyinstaller HADES.spec --clean`; outputs to `dist/HADES/`
+- [ ] Piper binary inclusion: copy the Piper CLI binary and the voice model `.onnx` + `.onnx.json` into the bundle's `voices/` dir; update `_init_piper()` to find the binary relative to `sys._MEIPASS` when frozen
+- [ ] Update `config.py` to detect `getattr(sys, 'frozen', False)` and resolve paths relative to `sys._MEIPASS` instead of `__file__`
+- [ ] Test: bundled `.exe` launches, authenticates, speaks, listens, and executes at least one command from each handler category; no missing DLL errors on a clean machine without Python
+
+**Done when**: `build.bat` produces a `dist/HADES/HADES.exe` (or single `.exe`) that runs on a Windows machine with no Python installed; all core features work; bundle size is documented.
+
+---
+
+## Phase 19: Action Log ⬜
+**Goal**: Keep a reviewable record of every action HADES takes — commands executed, notes saved, reminders set, web searches opened, Spotify commands, power actions, etc. Lightweight audit trail required before shipping calendar write and email send in v1.5.
+
+- [ ] Create `action_log.py` — `log_action(action_type, description, user_id=None, success=True)` function; writes to local `action_log.json` (rolling 500 entries, oldest pruned on write) and optionally to a Supabase `action_log` table
+- [ ] Add `action_log` Supabase table to `scripts/supabase_schema.sql`: columns `id uuid`, `user_id uuid`, `timestamp timestamptz`, `action_type text`, `description text`, `success bool`; RLS: user can only read/write their own rows
+- [ ] Wire `log_action()` into `router.py:route()` — after each handler returns a non-None result, log `(action_type=handler_class_name, description=response[:120])` without blocking the response path (fire-and-forget thread)
+- [ ] Add `_ActionLogHandler` in `router.py` — intent: "what did you do", "show action log", "recent actions", "what have you done today"; returns the last 5–10 log entries formatted as a spoken list: "In the last hour I: opened Chrome, saved a note under work, played jazz on Spotify."
+- [ ] Add `ACTION_LOG_ENABLED` env var to `config.py` and `.env.example` (default: `true`) — set to `false` to skip logging entirely (privacy mode)
+- [ ] `action_log.json` added to `.gitignore`; `action_log` table added to Supabase schema doc
+- [ ] Test: after a session of 5+ commands, "what did you do recently?" returns an accurate spoken list; log file never exceeds 500 entries; `ACTION_LOG_ENABLED=false` produces no writes
+
+**Done when**: Action log is populated after every session; "recent actions" voice command works; log degrades gracefully (no crash) when Supabase is absent.
+
+---
+
+## Phase 20: Barge-in ⬜ (after Phase 17)
+**Goal**: Allow the user to speak over HADES mid-sentence to interrupt and redirect it. Depends on Phase 17 (streaming TTS) because barge-in only makes sense when responses are spoken incrementally — interrupting a full-block speak() call would require killing it anyway, but streaming gives a natural seam.
+
+**Strategy**: run a lightweight voice-activity detection (VAD) thread during TTS playback. When mic energy exceeds a threshold, set an interrupt `threading.Event`; the TTS playback loop checks this event between chunks and stops. The interrupted speech is then captured normally by `listen()`.
+
+- [ ] Add `BARGE_IN_ENABLED` boolean env var to `config.py` and `.env.example` (default: `true`)
+- [ ] Add `voice/vad.py` — `VoiceActivityDetector` class; opens a secondary `pyaudio` input stream at 16 kHz; in a background thread, computes RMS energy per 20 ms frame; if energy exceeds `VAD_THRESHOLD` (env var, default: `500`) for at least 2 consecutive frames, sets `self.triggered` event
+- [ ] Modify `voice/tts.py:speak_streaming()` (Phase 17) — accepts an optional `interrupt_event: threading.Event`; checks the event between every audio chunk; if set, stops playback, closes the audio stream, and returns early with a `interrupted=True` flag
+- [ ] Modify `main.py:hades_loop()` — create a `VAD` instance before TTS starts; pass its `triggered` event to `speak_streaming()`; if the speak returns early (interrupted), skip the follow-up window setup and immediately call `listen()` to capture the barge-in speech; route it normally
+- [ ] Handle device conflict: both VAD (input) and TTS (output) use pyaudio — open them on separate streams (one input device, one output device); full-duplex is supported by most Windows audio drivers; fall back gracefully if the input stream fails to open during TTS
+- [ ] Add debounce: ignore VAD triggers for 300 ms after TTS starts to avoid the TTS output itself triggering the VAD (acoustic echo)
+- [ ] Test: saying "stop" or asking a new question while HADES is mid-sentence interrupts cleanly within 200 ms; the new question is routed correctly; non-barge-in responses complete normally; `BARGE_IN_ENABLED=false` disables the VAD thread entirely
+
+**Done when**: Mid-sentence interruption stops TTS within 200 ms, captures the new input, and routes it; no audio device errors on a standard Windows machine; `BARGE_IN_ENABLED=false` restores original behavior.
