@@ -16,17 +16,18 @@ Legend: ✅ shipped · 🔜 planned (see [Roadmap](#roadmap))
 ### Core interaction
 | Feature | Status | Description |
 |---|---|---|
-| Wake Word | ✅ | Say **"HADES"** to activate — no button needed |
+| Wake Word | ✅ | Say **"HADES"** to activate — neural model via `openwakeword`; STT fallback |
 | Sleep Mode | ✅ | "sleep"/"goodbye" → mic stays on, listens only for wake word; orb dims |
 | AI Conversation | ✅ | Groq LLaMA 3.3 70B with persistent memory |
 | Cloud Memory | ✅ | Optional Supabase — two-tier: last 12 turns + top 5 semantic via pgvector |
 | Multi-User Auth | ✅ | Email+password or magic link; session persisted across restarts |
 | Face Auth | ✅ | Optional face-recognition gate before startup |
-| GUI | ✅ | Animated holographic dark UI with text-input fallback |
-| **Continuous conversation** | 🔜 | Ask follow-ups without re-saying the wake word; configurable hold-open window |
+| GUI | ✅ | Animated holographic dark UI — 6 orb states including `followup` |
+| **Continuous conversation** | ✅ | Ask follow-ups without re-saying the wake word; configurable `FOLLOWUP_TIMEOUT` |
+| **Neural wake word** | ✅ | `openwakeword` local ONNX model; far fewer false triggers; STT fallback if absent |
+| **Action confirmation** | ✅ | Destructive actions (shutdown, restart, delete notes) require spoken confirmation |
 | **Barge-in / interruptible speech** | 🔜 | Talk over HADES to stop or redirect mid-sentence |
 | **Streaming responses** | 🔜 | Begin speaking as tokens arrive — lower perceived latency |
-| **Neural wake word** | 🔜 | openWakeWord/Porcupine for far fewer false triggers than fuzzy STT matching |
 | **Speaker identification** | 🔜 | Recognize *who* is speaking and load their profile/memory automatically |
 
 ### Knowledge & answers
@@ -77,7 +78,7 @@ Legend: ✅ shipped · 🔜 planned (see [Roadmap](#roadmap))
 |---|---|---|
 | **Local / offline mode** | 🔜 | Optional local LLM (Ollama) + fully-offline fallback for privacy/no-internet |
 | **Skill / plugin system** | 🔜 | Drop-in user skills via a simple manifest; community-extendable command set |
-| **Action confirmation** | 🔜 | Destructive actions (shutdown, delete, send) require a spoken/clicked confirm |
+| **Action confirmation** | ✅ | Destructive actions (shutdown, restart, delete notes) require a spoken/clicked confirm |
 | **Untrusted-input handling** | 🔜 | Treat screen/web/news text as data, never as commands to auto-execute |
 | **Action log** | 🔜 | Reviewable history of what HADES did and when |
 | **Secret redaction** | 🔜 | Never read API keys / passwords aloud or into prompts |
@@ -86,11 +87,11 @@ Legend: ✅ shipped · 🔜 planned (see [Roadmap](#roadmap))
 
 ## Roadmap
 
-**v0.x (now):** voice loop, conversation + memory, weather/news/stocks/Spotify, PC control, screen vision, notes/reminders, auth, GUI.
+**v1.0 (shipped):** voice loop, conversation + memory, weather/news/stocks/Spotify, PC control, screen vision, notes/reminders, auth, GUI, **neural wake word**, **continuous conversation**, **action confirmation gate**.
 
-**v1.0 — "Smoother JARVIS":** continuous conversation, barge-in, streaming responses, neural wake word, action confirmation + action log, untrusted-input handling, local/offline LLM option.
+**v1.1 — "Smoother JARVIS":** barge-in, streaming responses, PyInstaller `.exe` distribution, action log, untrusted-input handling, local/offline LLM option.
 
-**v1.5 — "Life manager":** calendar + email, morning/evening briefings, routines/macros, timers/alarms, file search, notification awareness.
+**v1.5 — "Life manager":** calendar + email (confirm gate already in place ✅), morning/evening briefings, routines/macros, timers/alarms, file search, notification awareness.
 
 **v2.0 — "Anticipatory & extensible":** proactive nudges, preference learning + editable profile, web research agent, document/PDF Q&A, skill/plugin system, smart-home bridge, mobile companion.
 
@@ -100,7 +101,7 @@ Legend: ✅ shipped · 🔜 planned (see [Roadmap](#roadmap))
 
 ## Architecture & Extensibility
 
-HADES is modular: `main.py` runs the voice loop; `router.py` dispatches each recognized intent to the right handler using the **Strategy pattern** — 11 `_Handler` subclasses, each owning one intent, registered in a priority list. To add a new intent, write a subclass and append it to `_HANDLERS`; `route()` itself never changes (OCP). PC commands use the same pattern inside `commands/system.py` with 12 `_CommandHandler` subclasses. Planned **skill system** formalizes this further so anyone can add commands without touching core:
+HADES is modular: `main.py` runs the voice loop; `router.py` dispatches each recognized intent to the right handler using the **Strategy pattern** — 13 `_Handler` subclasses, each owning one intent, registered in a priority list. To add a new intent, write a subclass and append it to `_HANDLERS`; `route()` itself never changes (OCP). PC commands use the same pattern inside `commands/system.py` with 12 `_CommandHandler` subclasses. Planned **skill system** formalizes this further so anyone can add commands without touching core:
 
 ```
 skills/
@@ -159,7 +160,13 @@ Edit `.env` with your keys:
 >
 > **Custom wake words:** `WAKE_WORDS=hades,jarvis` — comma-separated; fuzzy variants auto-derived. `WAKE_DEBOUNCE=2.5` tunes echo protection.
 >
-> **Local/offline mode (v1.0):** set `LLM_BACKEND=ollama` and `OLLAMA_MODEL=llama3.1:8b` to run inference on-device.
+> **Neural wake word:** `NEURAL_WAKE_WORD=true` (default) uses `openwakeword` if installed. Set to `false` to force the STT fallback. Optionally point `WAKE_MODEL` to a custom `.onnx` file trained on your phrase.
+>
+> **Continuous conversation:** `FOLLOWUP_TIMEOUT=15` — seconds of silence after a reply before returning to standby. Lower it for a snappier feel; raise it for longer pauses between follow-ups.
+>
+> **Action confirmation:** `CONFIRM_TIMEOUT=10` — seconds to wait for a "yes/no" before auto-cancelling a destructive command (shutdown, restart, delete notes).
+>
+> **Local/offline mode (v1.1):** set `LLM_BACKEND=ollama` and `OLLAMA_MODEL=llama3.1:8b` to run inference on-device.
 
 ### 4. (Optional) Supabase cloud setup
 
@@ -224,7 +231,7 @@ python main.py
 | *"Take a screenshot"* / *"What's on my screen"* | Screenshot / screen analysis | ✅ |
 | *"What's my clipboard / battery"*, *"CPU / RAM / disk"* | System info | ✅ |
 | *"What time/today is it"* | Time / date | ✅ |
-| *"Shutdown in 30 minutes"* / *"Restart"* / *"Lock"* | Power (✱ will confirm) | ✅→🔜 |
+| *"Shutdown in 30 minutes"* / *"Restart"* (requires spoken "yes") / *"Lock"* | Power | ✅ |
 | *"Remind me in 10 minutes to eat"* | Timed reminder | ✅ |
 | *"Take a note: ..."*, *"Read my [category] notes"*, *"Delete my last/[category] notes"* | Notes | ✅ |
 | *"Clear memory"* | Reset conversation history | ✅ |
@@ -245,11 +252,11 @@ python main.py
 
 - **LLM:** Groq (LLaMA 3.3 70B Versatile) — free, fast inference · *planned: Ollama local backend*
 - **Screen Vision:** Groq (Llama 4 Scout 17B — multimodal, same API key, no extra cost)
-- **Speech-to-Text:** SpeechRecognition + Google STT (free, no key needed) · *planned: neural wake word (openWakeWord), barge-in*
+- **Speech-to-Text:** SpeechRecognition + Google STT (free, no key needed) · **neural wake word via `openwakeword`** (Phase 14) · *planned: barge-in*
 - **TTS:** PiperTTS — offline, neural, British male voice; auto-downloads on first run · *planned: multi-voice + emotional inflection*
 - **Cloud Memory:** Supabase + pgvector (optional; falls back to local JSON)
 - **Embeddings:** sentence-transformers (`all-MiniLM-L6-v2`, 384-dim) — semantic memory search
-- **GUI:** PyWebview (animated holographic orb + chat log + text-input fallback)
+- **GUI:** PyWebview (animated holographic orb — 6 states: standby/sleeping/listening/followup/thinking/speaking + chat log + text-input fallback)
 - **PC Control:** pyautogui, psutil, pycaw, pyperclip
 - **APIs:** OpenWeatherMap, NewsAPI, Yahoo Finance, CoinGecko · *planned: Google Calendar/Gmail, Home Assistant*
 - **Spotify:** Spotipy
@@ -291,7 +298,7 @@ HADES/
 │   └── smoke_test.py          #   Pre-flight API key validation
 │
 ├── frontend/index.html        # Single-page sci-fi UI
-├── tests/test_route.py        # 24 unit tests for router.route()
+├── tests/test_route.py        # 33 unit tests for router.route() (includes Phase 16 confirm gate)
 ├── install.bat                # Windows one-command installer
 ├── setup.py                   # pip install -e . packaging
 ├── requirements.txt

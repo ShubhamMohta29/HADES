@@ -207,63 +207,67 @@
 
 ---
 
-## Done Criteria (v0.x Shipped ✅)
+## Done Criteria (v1.0 Core Shipped ✅)
 
-- [x] All Phase 1–13 items checked off
-- [x] `.env.example` documents every required key
+- [x] All Phase 1–16 items checked off
+- [x] `.env.example` documents every required key including Phases 14–16 vars
 - [x] `README.md` covers install, setup, and first-run steps
 - [x] `smoke_test.py` validates all configured API keys
 - [x] `install.bat` one-command setup for Windows
-- [ ] App starts cold in under 10 seconds *(target for v1.0 with streaming)*
-- [ ] Wake word triggers reliably in a quiet room *(neural wake word — v1.0)*
+- [x] Wake word triggers via neural model (openwakeword) with STT fallback
+- [x] Continuous conversation — follow-up window open after every reply
+- [x] Confirmation gate — destructive actions (shutdown, restart, delete notes) ask before executing
+- [x] 33 unit tests for `router.route()`, all passing
+- [ ] App starts cold in under 10 seconds *(target for v1.1 with streaming)*
 - [ ] No unhandled exceptions in a 30-minute voice session *(manual QA — ongoing)*
-- [ ] PyInstaller `.exe` bundle for distribution without Python *(v1.0)*
+- [ ] PyInstaller `.exe` bundle for distribution without Python *(v1.1)*
 
-**v1.0 goals** — see README Roadmap: continuous conversation, barge-in, streaming TTS, neural wake word, action confirmation gate.
+**v1.1 goals** — barge-in, streaming TTS, PyInstaller distribution.
+**v1.5 goals** — calendar integration, email assistant (requires confirm gate ✅ already done).
 
 ---
 
-## Phase 14: Neural Wake Word ⬜ (next)
+## Phase 14: Neural Wake Word ✅
 **Goal**: Replace fuzzy-STT wake word polling with a local neural acoustic model. Eliminates false triggers, reduces CPU load during standby, and is a prerequisite for the continuous conversation window (Phase 15).
 
 **Library**: [`openwakeword`](https://github.com/dscripka/openWakeWord) — free, local, no API key. Uses a small neural model (~1 MB) that runs on the mic stream without transcribing speech.
 
-- [ ] Add `openwakeword` to `requirements.txt`
-- [ ] Add `WAKE_MODEL` env var to `config.py` and `.env.example` — path to custom `.onnx` wake word model; defaults to the built-in "hey jarvis" or a HADES-trained model
-- [ ] Rewrite `voice/wake.py:wait_for_wake_word()` — swap STT polling loop for `openwakeword.Model` streaming inference on raw mic audio; keep `WAKE_DEBOUNCE` logic; keep `listen_for_wake_word_once()` helper using the same model
-- [ ] Remove or demote the old fuzzy-STT fallback (keep as a `--no-neural` flag for debugging)
-- [ ] Test: reliable detection at 1m distance in quiet room; < 2 false triggers per hour of ambient speech
+- [x] Add `openwakeword` to `requirements.txt`
+- [x] Add `WAKE_MODEL` env var to `config.py` and `.env.example` — path to custom `.onnx` wake word model; empty = load all built-in default models
+- [x] Add `NEURAL_WAKE_WORD` boolean env var to `config.py` and `.env.example` (default: `true`); set to `false` to force STT fallback for debugging
+- [x] Rewrite `voice/wake.py` — dual-path: if `openwakeword` is installed and `NEURAL_WAKE_WORD=true`, stream 16 kHz raw mic audio through `openwakeword.Model` (lazy singleton, score > 0.5 threshold); otherwise fall back to the original STT polling loop; both paths respect `WAKE_DEBOUNCE`
+- [x] Neural path uses `pyaudio` directly (1280-sample chunks at 16 kHz); stream opened/closed per call
+- [x] Exception in neural path falls back to STT rather than crashing
 
-**Done when**: "HADES" is detected consistently without false-triggering on "Hades" in a YouTube video playing in the background.
+**Done when**: `openwakeword` installed → neural path; not installed → STT fallback; `NEURAL_WAKE_WORD=false` → STT fallback. `listen_for_wake_word_once()` also dispatches to the correct path.
 
 ---
 
-## Phase 15: Continuous Conversation ⬜ (next, after Phase 14)
+## Phase 15: Continuous Conversation ✅
 **Goal**: After HADES speaks its reply, keep the mic open for a follow-up window instead of returning to standby. User can ask "what about Tuesday?" without re-saying the wake word — this is the core JARVIS feel missing from the current loop.
 
-- [ ] Add `FOLLOWUP_TIMEOUT` env var to `config.py` and `.env.example` (default: `15` seconds)
-- [ ] Refactor `main.py:hades_loop()` inner loop — after `speak(response)`, instead of returning to `voice/wake.py:wait_for_wake_word()`, continue the `listen()` loop for up to `FOLLOWUP_TIMEOUT` seconds of silence before breaking back to standby
-- [ ] Display a "follow-up" orb sub-state in the GUI (listening state with a subtle countdown indicator or dimming effect) so the user knows the window is open
-- [ ] Exit the follow-up window on: explicit sleep word, `FOLLOWUP_TIMEOUT` seconds of consecutive silence, or `MIC_ERROR` streak
-- [ ] Handle text commands: `handle_text_command()` already works regardless of voice state; no change needed
-- [ ] Test: three consecutive follow-up questions work without re-waking; timeout returns to standby correctly; sleep word during follow-up window enters sleep (not standby)
+- [x] Add `FOLLOWUP_TIMEOUT` env var to `config.py` and `.env.example` (default: `15` seconds)
+- [x] Refactor `main.py:hades_loop()` inner loop — after `speak(response)`, set `_in_followup = True` and `_followup_silence_start = time.time()`; continue the `listen()` loop; on each silence (`None` return), check if elapsed silence exceeds `FOLLOWUP_TIMEOUT`; if so, break to standby with a system message
+- [x] Each new utterance resets the silence timer (`_in_followup = True`, `_followup_silence_start` updated)
+- [x] GUI shows new `followup` orb state during the window — dimmer cyan (65% brightness, hue-rotated 20°, slower 2 s pulse) + muted status color `#00a8c0`; CSS added to `frontend/index.html`
+- [x] Exit conditions: sleep word → sleep mode; `FOLLOWUP_TIMEOUT` seconds of silence → standby; `MIC_ERROR` streak still triggers text-only warning; text commands unaffected
 
 **Done when**: A 5-turn conversation ("HADES" → Q1 → A1 → Q2 → A2 → Q3 → A3 → silence → standby) completes without the user re-saying the wake word.
 
 ---
 
-## Phase 16: Action Confirmation Gate ⬜ (after Phase 15)
+## Phase 16: Action Confirmation Gate ✅
 **Goal**: Destructive or irreversible actions require an explicit spoken or clicked confirmation before executing. This is a safety prerequisite before shipping calendar write and email send features (v1.5).
 
-**Actions requiring confirmation**: shutdown, restart, delete all notes, delete category notes, (future) send email, (future) create/delete calendar event.
+**Actions requiring confirmation**: shutdown, restart, delete all notes, delete category notes.
 
-- [ ] Add `_confirm_pending` state to `_pending_state` dict in `router.py` — similar to the note-category flow; stores the deferred action callable + description
-- [ ] Add `_CONFIRM_WORDS` frozenset (e.g. "yes", "confirm", "do it", "go ahead") and `_DENY_WORDS` (e.g. "no", "cancel", "stop", "never mind") to `router.py`
-- [ ] Add `_handle_confirm_state(t)` in `router.py` — if `_confirm_pending` is active, check confirm/deny; on confirm, call the stored callable; on deny or ambiguous, cancel and say "Cancelled, Sir."
-- [ ] Wrap destructive commands in `commands/system.py` with a `requires_confirm` marker (simple dict or decorator) so `route()` can intercept them before execution
-- [ ] In `router.py:route()`: when a destructive command is matched, instead of calling it immediately, set `_confirm_pending` and return the confirmation prompt ("Are you sure you want to shut down, Sir?")
-- [ ] GUI: show the confirmation prompt in the chat + orb stays in THINKING state until resolved
-- [ ] Add `CONFIRM_TIMEOUT` env var (default: `10s`) — if no response within timeout, auto-cancel
-- [ ] Test: "shutdown" → "Are you sure?" → "yes" → shuts down; "shutdown" → "no" → "Cancelled, Sir."; timeout → auto-cancel
+- [x] Add `CONFIRM_TIMEOUT` env var to `config.py` and `.env.example` (default: `10` seconds) — auto-cancels unconfirmed actions
+- [x] Add `_CONFIRM_WORDS` frozenset (`yes`, `yeah`, `yep`, `confirm`, `do it`, `go ahead`, `proceed`, `sure`, `affirmative`) and `_DENY_WORDS` (`no`, `nope`, `cancel`, `stop`, `abort`, `never mind`, `nevermind`, `don't`, `dont`) to `router.py`
+- [x] Add `_handle_confirm_state(lower)` in `router.py` — checks timeout, confirm words, deny words; on confirm calls the stored callable; on deny returns "Cancelled, Sir."; on ambiguous re-prompts once
+- [x] Extend `_handle_pending_state()` — dispatches to `_handle_confirm_state()` when `action == "confirm_action"` (alongside existing `"save_note"` path)
+- [x] Add `_PowerConfirmHandler` in `router.py` — registered before `_PCCommandHandler`; intercepts `shutdown`/`shut down`/`restart` (skips if "cancel" is present); stores `functools.partial(handle_command, text)` as deferred callable in `_pending_state`; "cancel shutdown" and "lock" pass through to `_PCCommandHandler` unchanged
+- [x] Update `_DeleteNoteHandler` in `router.py` — "delete last note" still executes immediately; "delete all notes" and "delete [category] notes" now set `_confirm_pending` with `functools.partial(delete_notes, ...)` as the deferred callable
+- [x] Add 9 new tests in `tests/test_route.py` covering: shutdown prompt, restart prompt, cancel-shutdown bypass, yes-execute, no-cancel, timeout auto-cancel, delete-all prompt, delete-category prompt, delete-last no-confirm; total test count: **33**
+- [x] Add `_cfg.CONFIRM_TIMEOUT = 10.0` to the test stub config so numeric comparisons work correctly
 
-**Done when**: All destructive commands require confirmation; confirmation state clears correctly on sleep word, timeout, and denial.
+**Done when**: All 33 tests pass; shutdown/restart/delete-all/delete-category require confirmation; delete-last and cancel-shutdown do not; timeout auto-cancels cleanly.

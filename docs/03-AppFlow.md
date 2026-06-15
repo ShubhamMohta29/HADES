@@ -73,7 +73,7 @@ If `FACE_AUTH_ENABLED=true`: face verification runs first inside `hades_loop()`.
 7. Router matches "weather" keyword → calls OpenWeatherMap → formats reply
 8. Orb shifts to **SPEAKING** state → Piper TTS plays response
 9. Reply appears in chat as "HADES: ..."
-10. Loop returns to **LISTENING** (user can continue without re-saying "HADES")
+10. Loop enters **FOLLOW-UP** state — orb dims to `followup` CSS state; mic stays open for up to `FOLLOWUP_TIMEOUT` seconds of silence; user can ask follow-ups without re-saying "HADES"
 11. User says "sleep" / "goodbye" / "goodnight" / "stand by" / "that's all" → HADES says "Going to sleep, Sir" → orb enters **SLEEPING** state → mic remains open but only the wake word is processed; all other speech is discarded → user says "HADES" → HADES responds "I'm back, Sir" → resumes command mode
 
 ---
@@ -129,6 +129,7 @@ If `FACE_AUTH_ENABLED=true`: face verification runs first inside `hades_loop()`.
 | standby | Slow pulse (3.2s), default cyan glow | App idle, waiting for wake word |
 | sleeping | Near-dark (15% brightness), rings/ticks at 10% opacity, very slow pulse (9s) | User triggered sleep; mic active but only wake word processed |
 | listening | Fast pulse (1.2s), bright oversized glow | Wake word detected; mic active for commands |
+| followup | Dim cyan (65% brightness, +20° hue), slower pulse (2s), muted status color | After HADES speaks; follow-up window open; mic active for up to FOLLOWUP_TIMEOUT seconds |
 | thinking | `hue-rotate(40deg)` amber shift, rapid pulse (0.8s) | Processing input (routing/LLM) |
 | speaking | `hue-rotate(-30deg) saturate(1.4)` blue-white shift, fastest pulse (0.6s) | Piper TTS playing |
 
@@ -169,9 +170,27 @@ Triggers (voice or text): "sleep", "goodbye", "good bye", "goodnight", "good nig
 
 ## Note Deletion Flow
 
-- **Delete last note**: "delete my last note" → `commands.delete_last_note(user_id)` → removes the most recently created note (Supabase or flat-file); confirms "Done, Sir. Your last note has been deleted."
-- **Delete category**: "delete my work notes" → `commands.delete_notes("work", user_id)` → removes all notes in that category; confirms "Deleted 3 work notes, Sir."
-- **Delete all**: "delete all my notes" → `commands.delete_notes(user_id=user_id)` → removes all notes; confirms "All 5 notes deleted, Sir."
+- **Delete last note**: "delete my last note" → executes immediately → `commands.delete_last_note(user_id)` → confirms "Done, Sir. Your last note has been deleted."
+- **Delete category**: "delete my work notes" → enters **confirm gate** → HADES: "Are you sure you want to delete all your work notes, Sir?" → user says "yes" → `commands.delete_notes("work", user_id)` → confirms; "no" → "Cancelled, Sir."
+- **Delete all**: "delete all my notes" → enters **confirm gate** → HADES: "Are you sure you want to delete all your notes, Sir? This cannot be undone." → user says "yes" → `commands.delete_notes(user_id=user_id)` → confirms; "no" → "Cancelled, Sir."
+
+---
+
+## Action Confirmation Gate Flow (Phase 16)
+
+Triggered by: `shutdown`, `restart`, `delete all notes`, `delete [category] notes`.
+
+1. Router matches a destructive command
+2. Instead of executing, `_PowerConfirmHandler` or `_DeleteNoteHandler` stores the deferred callable in `_pending_state["action"] = "confirm_action"` with a `set_at` timestamp
+3. HADES speaks the confirmation prompt: "Are you sure you want to {description}, Sir?"
+4. On the **next** voice or text input, `_handle_confirm_state()` is called:
+   - **Confirm words** (`yes`, `confirm`, `go ahead`, `proceed`, `sure`, …) → execute the stored callable → speak result
+   - **Deny words** (`no`, `cancel`, `stop`, `abort`, `never mind`, …) → clear state → "Cancelled, Sir."
+   - **Timeout**: if `time.time() - set_at > CONFIRM_TIMEOUT` (default 10s) → auto-cancel → "Confirmation timed out. Action cancelled, Sir."
+   - **Ambiguous**: re-prompt once — "Please confirm — {description}? Say 'yes' to proceed or 'no' to cancel, Sir."
+5. Sleep words during confirmation window clear `_pending_state` and enter sleep normally
+
+Commands that bypass the gate: `cancel shutdown`, `lock` (both non-destructive, execute immediately).
 
 ---
 
@@ -201,8 +220,10 @@ Triggers (voice or text): "sleep", "goodbye", "good bye", "goodnight", "good nig
 | Groq API error | "My connection to the language server is disrupted, Sir. Try again in a moment." |
 | Google STT failure | `listen()` returns `None` → loop continues listening |
 | Mic unavailable (OSError) | `listen()` returns `MIC_ERROR` → after 3 in a row, GUI shows text-only warning |
-| Wake word timeout | `WaitTimeoutError` caught → continue polling |
-| Wake word double-fire | Debounce (2.5 s default) silently ignores rapid re-trigger |
+| Wake word timeout | `WaitTimeoutError` caught → continue polling (STT path) or chunk loop continues (neural path) |
+| Wake word double-fire | Debounce (2.5 s default) silently ignores rapid re-trigger on both neural and STT paths |
+| Neural wake word error | Exception in `openwakeword` path → logged → falls back to `_stt_wait_for_wake_word()` for that call |
+| Confirm timeout | No voice input within `CONFIRM_TIMEOUT` seconds → auto-cancel on next interaction |
 | Supabase auth error | Spoken error; falls back to local mode |
 | Supabase DB error | Logged; notes/memory fall back to flat-file silently |
 | Spotify 401 | "Spotify authentication has expired, Sir. Restart HADES to re-authenticate." |

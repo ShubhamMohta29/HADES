@@ -10,7 +10,7 @@
 - **Python 3.10+** — single-process application
 - `main.py` runs the voice loop on a daemon thread; GUI runs on the main thread
 - Module architecture: `brain`, `db`, `voice/` (tts, stt, wake), `commands/` (system, notes, help), `services/` (weather, news, stocks, spotify), `vision`, `face_auth`, `config`, `gui`
-- Intent routing in `router.py:route()` — Strategy pattern dispatcher: 11 `_Handler` subclasses, each owning one intent; `route()` iterates `_HANDLERS` and delegates to the first match; falls back to Groq LLM; adding a new intent never modifies `route()` (OCP); `main.py` is the entry point and voice loop only
+- Intent routing in `router.py:route()` — Strategy pattern dispatcher: 13 `_Handler` subclasses, each owning one intent; `route()` iterates `_HANDLERS` and delegates to the first match; falls back to Groq LLM; adding a new intent never modifies `route()` (OCP); `main.py` is the entry point and voice loop only. Includes `_PowerConfirmHandler` (Phase 16) and extended `_DeleteNoteHandler` with confirm gate; `_handle_confirm_state()` manages the `"confirm_action"` pending state alongside the existing `"save_note"` flow
 
 ## AI / LLM
 - **Groq API** — Llama 3.3 70B Versatile for conversational AI (`brain.py`)
@@ -28,7 +28,7 @@
 
 ## Speech Recognition
 - **SpeechRecognition** library — `sr.Recognizer` with Google STT backend (free, no key required)
-- Wake word detection: polls mic in a loop; checks transcript against `WAKE_WORDS` frozenset (fuzzy variants per word); `WAKE_DEBOUNCE` suppresses double-fire
+- Wake word detection (Phase 14): dual-path in `voice/wake.py` — **neural path** (default): `openwakeword.Model` lazy singleton streams 1280-sample chunks at 16 kHz via `pyaudio`; detects on score > 0.5; **STT fallback**: original fuzzy-match polling loop (active when `NEURAL_WAKE_WORD=false` or `openwakeword` not installed). Both paths respect `WAKE_DEBOUNCE`.
 - Main listen loop: single `listen()` call per turn, 10s timeout; returns `MIC_ERROR` sentinel on `OSError` (distinct from `None` for silence)
 
 ## Embeddings
@@ -56,7 +56,7 @@
 | `groq` | Groq Python SDK (LLM + vision) |
 | `supabase` | Supabase Python client (auth, DB, RPC) |
 | `sentence-transformers` | Local embedding model (all-MiniLM-L6-v2) |
-| `openwakeword` | Neural wake word detection — Phase 14 (planned) |
+| `openwakeword` | Neural wake word detection (Phase 14) — optional; STT fallback when absent |
 | `speechrecognition` | STT wrapper |
 | `pyaudio` | Microphone input stream |
 | `piper-tts` | Offline neural TTS (Python API path) |
@@ -81,7 +81,7 @@
 ```
 HADES/
 ├── main.py                    # entry point: hades_loop(), handle_text_command(), startup wiring
-├── router.py                  # route(), 13-step intent router, _pending_state note flow
+├── router.py                  # route(), 13-handler intent router, _pending_state (note + confirm flows)
 ├── brain.py                   # Groq LLM, two-tier memory (Supabase / local JSON)
 ├── db.py                      # Supabase client, embeddings, auth, notes, memory
 ├── vision.py                  # screen capture + Groq Llama 4 Scout multimodal
@@ -93,7 +93,7 @@ HADES/
 │   ├── __init__.py            # re-exports: speak, listen, wait_for_wake_word, MIC_ERROR, WAKE_WORDS
 │   ├── tts.py                 # Piper TTS: speak(), _init_piper(), auto-download, playback backends
 │   ├── stt.py                 # SpeechRecognition: listen(), shared recognizer, MIC_ERROR sentinel
-│   └── wake.py                # wake word: wait_for_wake_word(), listen_for_wake_word_once(), WAKE_WORDS
+│   └── wake.py                # wake word: neural (openwakeword) + STT fallback; wait_for_wake_word(), listen_for_wake_word_once()
 │
 ├── commands/
 │   ├── __init__.py            # re-exports all public names
@@ -119,7 +119,7 @@ HADES/
 ├── voices/
 │   └── en_GB-alan-medium.onnx   # Piper voice model (gitignored, ~60 MB, auto-downloaded)
 ├── tests/
-│   └── test_route.py          # 24 unit tests for router.route() (pytest, all deps mocked)
+│   └── test_route.py          # 33 unit tests for router.route() (pytest, all deps mocked) — includes Phase 16 confirm gate tests
 ├── conversation_history.json  # local memory fallback (auto-generated, gitignored)
 ├── notes.txt                  # local notes fallback (gitignored)
 ├── face_encodings.pkl         # face auth biometric data (gitignored)
@@ -144,6 +144,10 @@ FACE_AUTH_ENABLED       # "true" to enable face auth gate (default: false)
 PIPER_MODEL             # path to .onnx file (default: ./voices/en_GB-alan-medium.onnx)
 WAKE_WORDS              # comma-separated wake words (default: hades); fuzzy sets for hades/jarvis/friday
 WAKE_DEBOUNCE           # seconds to suppress re-trigger after wake word fires (default: 2.5)
+NEURAL_WAKE_WORD        # "true" (default) to use openwakeword neural model; "false" forces STT fallback
+WAKE_MODEL              # path to custom openwakeword .onnx model (optional; empty = all built-in models)
+FOLLOWUP_TIMEOUT        # seconds of silence after a reply before returning to standby (default: 15)
+CONFIRM_TIMEOUT         # seconds to wait for spoken confirmation on destructive commands (default: 10)
 ```
 
 ## Constraints

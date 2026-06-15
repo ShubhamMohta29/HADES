@@ -52,6 +52,7 @@ The orb is the visual centrepiece and the status indicator:
 - `standby`: default slow pulse (3.2s), normal glow — initial idle, waiting for first wake word
 - `sleeping`: `brightness(0.15) saturate(0.3)` near-black orb, rings + ticks at 10% opacity, very slow pulse (9s), status text nearly invisible — user-triggered sleep; mic still open for wake word only
 - `listening`: fast pulse (1.2s), bright oversized glow
+- `followup`: `brightness(0.65) hue-rotate(20deg)` dim teal shift, slower pulse (2s), muted status color `#00a8c0` — follow-up window after HADES speaks; signals that the mic is still open without the full-intensity listening state
 - `thinking`: `hue-rotate(40deg)` amber shift, rapid pulse (0.8s)
 - `speaking`: `hue-rotate(-30deg) saturate(1.4)` blue-white shift, fastest pulse (0.6s), largest glow
 

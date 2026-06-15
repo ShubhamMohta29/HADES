@@ -26,7 +26,7 @@ HADES is the only local-first, open-source AI assistant that combines a real con
 ## Core Features (Shipped)
 
 ### Conversation & Memory
-- **Wake word detection** — Say "HADES" to activate; stays in standby otherwise. Configurable via `WAKE_WORDS` env var; debounce prevents echo double-fire
+- **Wake word detection** — Neural model via `openwakeword` (local ONNX, no API, ~1 MB); falls back to fuzzy-STT polling if `openwakeword` is not installed or `NEURAL_WAKE_WORD=false`. Configurable via `WAKE_WORDS` / `WAKE_MODEL` env vars; debounce prevents echo double-fire
 - **Voice input** — Microphone capture with Google STT; ambient noise adaptation; MIC_ERROR sentinel enables graceful text-only fallback after 3 consecutive failures
 - **AI conversation** — Groq Llama 3.3 70B with persistent memory (see Cloud Memory below)
 - **Cloud memory** — Optional Supabase backend; two-tier: last 12 turns (recency) + top 5 semantically relevant past turns via pgvector cosine search (all-MiniLM-L6-v2 embeddings). Falls back to local JSON (last 20 turns) when Supabase is not configured
@@ -42,7 +42,7 @@ HADES is the only local-first, open-source AI assistant that combines a real con
 
 ### Productivity
 - **Notes** — Save voice notes with optional category tagging; conversational flow (HADES suggests a category using LLM, user confirms)
-- **Note management** — Read notes by category; delete last note; delete all notes in a category
+- **Note management** — Read notes by category; delete last note (immediate); delete category or all notes (requires spoken confirmation)
 - **Reminders** — Timed spoken reminders ("remind me in 10 minutes to...")
 
 ### PC Control
@@ -54,11 +54,12 @@ HADES is the only local-first, open-source AI assistant that combines a real con
 - **App launcher** — Open Chrome, VS Code, Notepad, Calculator, Explorer, Office apps by voice
 - **Website opener** — Open YouTube, GitHub, Gmail, Reddit, etc. by voice
 - **Web search** — Open Google search in browser by voice
-- **PC power** — Lock, shutdown (with delay), restart, cancel shutdown
+- **PC power** — Lock, shutdown (with delay), restart, cancel shutdown. Shutdown and restart require explicit spoken confirmation before executing; cancel-shutdown and lock execute immediately
 
 ### UI & Experience
-- **Sci-fi GUI** — Animated orb with 5 status states (standby, sleeping, listening, thinking, speaking)
+- **Sci-fi GUI** — Animated orb with 6 status states (standby, sleeping, listening, followup, thinking, speaking)
 - **Sleep mode** — Mic stays on but only wake word is processed; orb dims; distinct "I'm back, Sir" greeting on wake from sleep
+- **Follow-up window** — After HADES replies, orb enters `followup` state (dimmed cyan) for up to `FOLLOWUP_TIMEOUT` seconds; user can ask follow-ups without re-saying the wake word; silence timeout returns to standby
 - **Help command** — "help" / "commands" renders a styled command reference card in the chat log
 - **Face authentication** — Optional face-recognition gate before voice loop; register with `python face_auth.py --register`
 
@@ -70,28 +71,27 @@ HADES is the only local-first, open-source AI assistant that combines a real con
 
 ---
 
-## v1.0 — In Active Planning (Phases 14–16)
+## v1.0 — Shipped (Phases 14–16)
 
-### Phase 14 — Neural Wake Word
-Replace the current fuzzy-STT polling loop with `openWakeWord` — a local neural acoustic model (~1 MB) that detects the wake phrase without transcribing every utterance. Eliminates false triggers from ambient speech and YouTube/TV audio. Lower CPU in standby. Required before relaxing the conversation loop (Phase 15).
+### Phase 14 — Neural Wake Word ✅
+Replaced the fuzzy-STT polling loop with `openwakeword` — a local neural acoustic model that detects the wake phrase by scoring raw 16 kHz mic audio without transcribing every utterance. Eliminates false triggers from ambient speech and YouTube/TV audio. Falls back gracefully to the original STT polling loop if `openwakeword` is not installed or `NEURAL_WAKE_WORD=false`.
 
-- **Input**: raw mic audio stream
-- **Output**: wake event (probability > threshold)
-- **Config**: `WAKE_MODEL` env var for custom `.onnx` model path; built-in HADES model as default
+- **Config**: `WAKE_MODEL` (path to custom `.onnx`; empty = all built-in defaults), `NEURAL_WAKE_WORD` (bool, default `true`)
 - **Files**: `voice/wake.py`, `requirements.txt`, `config.py`, `.env.example`
 
-### Phase 15 — Continuous Conversation
-After HADES speaks, keep the mic open for a configurable window (default 15s) instead of returning to standby. User can ask follow-ups without re-saying "HADES". Silence timeout or sleep-word exits the window. Depends on Phase 14 for reliable detection.
+### Phase 15 — Continuous Conversation ✅
+After HADES speaks, the mic stays open for up to `FOLLOWUP_TIMEOUT` seconds of silence. User can ask follow-ups without re-saying "HADES". The orb enters a new `followup` state (dimmed cyan, slower pulse). Silence timeout returns to standby with a system message. Sleep words still work during the window.
 
-- **Config**: `FOLLOWUP_TIMEOUT` env var (seconds of silence before standby)
-- **UI**: subtle orb state during follow-up window (listening, slightly dimmed)
-- **Files**: `main.py`, `config.py`, `.env.example`
+- **Config**: `FOLLOWUP_TIMEOUT` (seconds of silence before standby; default `15`)
+- **UI**: new `followup` orb CSS state — `brightness(0.65)`, `hue-rotate(20deg)`, 2 s pulse, muted status color
+- **Files**: `main.py`, `frontend/index.html`, `config.py`, `.env.example`
 
-### Phase 16 — Action Confirmation Gate
-Destructive/irreversible actions (shutdown, restart, delete-all-notes, future: send email, delete calendar event) require explicit spoken or clicked confirmation. HADES asks "Are you sure, Sir?" — "yes/confirm" proceeds; anything else cancels. Timeout auto-cancels. Required before shipping any write/send features in v1.5.
+### Phase 16 — Action Confirmation Gate ✅
+Destructive/irreversible actions (shutdown, restart, delete-all-notes, delete-category-notes) require explicit spoken confirmation. HADES asks "Are you sure, Sir?" — confirm words (`yes`, `confirm`, `go ahead`, …) execute the stored callable; deny words (`no`, `cancel`, …) cancel; `CONFIRM_TIMEOUT` seconds with no response auto-cancels. Required before shipping any write/send features in v1.5.
 
-- **Pattern**: reuses `_pending_state` multi-turn machine already in `router.py`
-- **Files**: `router.py`, `commands/system.py`
+- **Config**: `CONFIRM_TIMEOUT` (seconds before auto-cancel; default `10`)
+- **Pattern**: extends the existing `_pending_state` multi-turn machine in `router.py` with a new `"confirm_action"` action type
+- **Files**: `router.py`, `config.py`, `.env.example`
 
 ---
 
@@ -135,6 +135,9 @@ Destructive/irreversible actions (shutdown, restart, delete-all-notes, future: s
 - As a user without a Supabase account, I want to skip login and run locally so there's no mandatory cloud dependency.
 - As a user, I want to run `smoke_test.py` before starting so I know all my API keys are valid.
 - As a user, I want a dark sci-fi UI so the assistant feels like a proper command center, not a utility widget.
+- As a user, I want to ask follow-up questions without saying "HADES" again so a multi-turn conversation feels natural.
+- As a user, I want HADES to ask "Are you sure?" before shutting down my computer so I never trigger it by accident.
+- As a user, I want the wake word to fire reliably without false triggers from YouTube or TV audio playing in the background.
 
 ---
 
@@ -144,7 +147,7 @@ Destructive/irreversible actions (shutdown, restart, delete-all-notes, future: s
 - Voice round-trip (wake → listen → think → speak) completes in under 4 seconds for conversational queries
 - All documented commands work end-to-end without crashing
 - TTS sounds natural (Piper offline model loaded and playing correctly)
-- GUI status orb correctly reflects all five states: standby, sleeping, listening, thinking, speaking
+- GUI status orb correctly reflects all six states: standby, sleeping, listening, followup, thinking, speaking
 - Cloud memory: Supabase path stores and retrieves messages correctly; local fallback works when Supabase keys are absent
 - Auth: session restores silently on app restart when token is valid; login panel shown when token is absent/expired
 - Zero crashes in a 30-minute voice session
