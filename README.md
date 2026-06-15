@@ -167,11 +167,11 @@ Without Supabase, HADES stores memory in `conversation_history.json` and notes i
 
 1. Create a free project at [supabase.com](https://supabase.com)
 2. Enable the `pgvector` extension: **Database → Extensions → vector**
-3. Open the SQL editor (**SQL Editor → New query**), paste the contents of **`supabase_schema.sql`** and run it — this creates the `notes`, `conversation_memory` tables, RLS policies, and the `match_memory` search function
+3. Open the SQL editor (**SQL Editor → New query**), paste the contents of **`scripts/supabase_schema.sql`** and run it — this creates the `notes`, `conversation_memory` tables, RLS policies, and the `match_memory` search function
 4. Add `SUPABASE_URL` and `SUPABASE_ANON_KEY` to your `.env`
 5. *(Only if you have existing notes in `notes.txt`)* Run the one-time migration to import them into Supabase:
    ```bash
-   python run_once_migrate_notes.py
+   python scripts/run_once_migrate_notes.py
    ```
    The script preserves timestamps and category tags, then renames `notes.txt` to `notes.txt.bak`.
 
@@ -194,7 +194,7 @@ To use face-recognition login (`FACE_AUTH_ENABLED=true`):
 
 Verify all configured API keys are valid before starting:
 ```bash
-python smoke_test.py
+python scripts/smoke_test.py
 ```
 Each key prints `PASS`, `FAIL`, or `SKIP` (if not set). All green → ready to launch.
 
@@ -260,30 +260,43 @@ python main.py
 
 ```
 HADES/
-├── main.py                    # Entry point, voice loop, intent router
-├── brain.py                   # AI with local/Supabase two-tier memory
+├── main.py                    # Entry point + voice loop
+├── router.py                  # Intent dispatcher (Strategy pattern, 11 handlers)
+├── brain.py                   # Groq LLM + two-tier memory (Supabase / local JSON)
 ├── db.py                      # Supabase client, embeddings, auth, notes, memory
-├── voice.py                   # Wake word detection, STT, Piper TTS
-├── commands.py                # PC control, notes, reminders, help card
 ├── gui.py                     # Animated holographic GUI + auth flow
 ├── config.py                  # .env loader
-├── weather.py                 # OpenWeatherMap API
-├── news.py                    # NewsAPI
-├── stocks.py                  # Yahoo Finance & CoinGecko
-├── spotify.py                 # Spotify control via Spotipy
 ├── vision.py                  # Groq Llama 4 Scout screen analysis
 ├── face_auth.py               # Optional face recognition (register + verify)
-├── supabase_schema.sql        # SQL to create Supabase tables + match_memory RPC
-├── run_once_migrate_notes.py  # One-time migration: notes.txt → Supabase
-├── smoke_test.py              # Pre-flight API key check
-├── install.bat                # Windows one-command installer (venv + deps + Piper)
-├── setup.py                   # pip install -e . for development
-├── skills/                    # (planned) drop-in user skills
-├── frontend/index.html        # GUI frontend
-├── voices/                    # Piper TTS model files (auto-downloaded on first run)
+│
+├── voice/                     # Voice I/O package
+│   ├── tts.py                 #   Piper TTS + auto-download
+│   ├── stt.py                 #   SpeechRecognition STT
+│   └── wake.py                #   Wake word detection + debounce
+│
+├── commands/                  # PC control package (Strategy pattern)
+│   ├── system.py              #   12 command handlers: volume, power, apps, reminders…
+│   ├── notes.py               #   Notes CRUD (local + Supabase)
+│   └── help.py                #   HELP_HTML constant
+│
+├── services/                  # External data services
+│   ├── weather.py             #   OpenWeatherMap
+│   ├── news.py                #   NewsAPI
+│   ├── stocks.py              #   Yahoo Finance + CoinGecko
+│   └── spotify.py             #   Spotify playback control
+│
+├── scripts/                   # Utility / one-time scripts
+│   ├── supabase_schema.sql    #   SQL: tables, RLS, match_memory() RPC
+│   ├── run_once_migrate_notes.py  # One-time migration: notes.txt → Supabase
+│   └── smoke_test.py          #   Pre-flight API key validation
+│
+├── frontend/index.html        # Single-page sci-fi UI
+├── tests/test_route.py        # 24 unit tests for router.route()
+├── install.bat                # Windows one-command installer
+├── setup.py                   # pip install -e . packaging
 ├── requirements.txt
 ├── .env.example
-└── .gitignore
+└── docs/                      # Planning and architecture docs
 ```
 
 ---

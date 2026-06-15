@@ -140,14 +140,15 @@ WHAT HAS BEEN BUILT (complete — v0.x)
                       downloads en_GB-alan-medium voice model, copies .env.example
                       → .env. All steps idempotent (skips if already present).
   - setup.py          pip install -e . support; entry point `hades = main:main`
-  - supabase_schema.sql  SQL to run in Supabase SQL editor: creates notes and
+  - scripts/          Utility and one-time scripts:
+    supabase_schema.sql  SQL to run in Supabase SQL editor: creates notes and
                       conversation_memory tables (role column has CHECK constraint),
                       RLS policies, match_memory() pgvector cosine-search function,
                       IVFFlat index on embedding column for fast similarity search.
-  - run_once_migrate_notes.py  Imports existing notes.txt into Supabase (one-time
+    run_once_migrate_notes.py  Imports existing notes.txt into Supabase (one-time
                       migration); preserves timestamps + categories; renames
                       notes.txt → notes.txt.bak on success.
-  - smoke_test.py     Pre-flight API key check: Groq / OpenWeatherMap / NewsAPI /
+    smoke_test.py     Pre-flight API key check: Groq / OpenWeatherMap / NewsAPI /
                       Spotify / Supabase (auth endpoint + schema table existence);
                       PASS/FAIL/SKIP per key; exits 1 on any failure.
 
@@ -231,7 +232,8 @@ FILE MAP
 HADES/
   main.py                 Entry point + voice loop (hades_loop, handle_text_command,
                           startup wiring, user_id threading from auth callback)
-  router.py               13-step intent router, _pending_state note flow,
+  router.py               Strategy-pattern dispatcher: _Handler base + 11 concrete
+                          handlers, _HANDLERS registry, _pending_state note flow,
                           service shims, intent keyword sets
   brain.py                Groq LLM + two-tier memory (Supabase / local JSON)
   db.py                   Supabase client, embeddings, auth, notes, memory
@@ -255,9 +257,10 @@ HADES/
     news.py               NewsAPI integration
     stocks.py             Stock + crypto price lookups
     spotify.py            Spotify playback control + error summarization
-  supabase_schema.sql     Supabase SQL: tables, RLS, match_memory() function
-  run_once_migrate_notes.py  One-time notes.txt → Supabase migration
-  smoke_test.py           Pre-flight API key validation
+  scripts/
+    supabase_schema.sql   Supabase SQL: tables, RLS, match_memory() function
+    run_once_migrate_notes.py  One-time notes.txt → Supabase migration
+    smoke_test.py         Pre-flight API key validation
   install.bat             Windows one-command installer
   setup.py                pip install -e . packaging
   requirements.txt        All Python dependencies

@@ -2,7 +2,7 @@
 
 Run after setting up Supabase and signing in for the first time:
 
-    python run_once_migrate_notes.py
+    python scripts/run_once_migrate_notes.py
 
 The script reads your local notes.txt, preserves timestamps and category tags,
 inserts every note into the Supabase `notes` table, then renames notes.txt to
@@ -14,6 +14,10 @@ Safe to re-run: it checks for notes.txt before doing anything.
 import re
 import sys
 import os
+
+# Allow running from any directory: project root must be on sys.path for project imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -24,7 +28,7 @@ if not SUPABASE_URL or not SUPABASE_ANON_KEY:
     print("ERROR: SUPABASE_URL and SUPABASE_ANON_KEY must be set in .env.")
     sys.exit(1)
 
-NOTES_FILE = os.path.join(os.path.dirname(__file__), "notes.txt")
+NOTES_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "notes.txt")
 
 if not os.path.exists(NOTES_FILE):
     print("notes.txt not found — nothing to migrate.")

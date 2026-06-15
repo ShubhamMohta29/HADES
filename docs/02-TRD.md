@@ -108,9 +108,10 @@ HADES/
 │   ├── stocks.py              # yfinance + CoinGecko
 │   └── spotify.py             # Spotipy playback control + error summarization
 │
-├── supabase_schema.sql        # SQL: notes + conversation_memory tables, match_memory RPC
-├── run_once_migrate_notes.py  # one-time notes.txt → Supabase migration
-├── smoke_test.py              # pre-flight API key validation
+├── scripts/
+│   ├── supabase_schema.sql    # SQL: notes + conversation_memory tables, match_memory RPC
+│   ├── run_once_migrate_notes.py  # one-time notes.txt → Supabase migration
+│   └── smoke_test.py          # pre-flight API key validation
 ├── install.bat                # Windows one-command installer
 ├── setup.py                   # pip install -e . packaging
 ├── frontend/
