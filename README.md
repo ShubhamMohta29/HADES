@@ -100,7 +100,7 @@ Legend: ✅ shipped · 🔜 planned (see [Roadmap](#roadmap))
 
 ## Architecture & Extensibility
 
-HADES is modular: `main.py` runs the voice loop and routes a recognized intent to a handler module (`weather.py`, `news.py`, `commands.py`, …). Planned **skill system** formalizes this so anyone can add commands without touching core:
+HADES is modular: `main.py` runs the voice loop; `router.py` dispatches each recognized intent to the right handler using the **Strategy pattern** — 11 `_Handler` subclasses, each owning one intent, registered in a priority list. To add a new intent, write a subclass and append it to `_HANDLERS`; `route()` itself never changes (OCP). PC commands use the same pattern inside `commands/system.py` with 12 `_CommandHandler` subclasses. Planned **skill system** formalizes this further so anyone can add commands without touching core:
 
 ```
 skills/

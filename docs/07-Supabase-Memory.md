@@ -214,9 +214,9 @@ Centralises all Supabase interaction. No other file imports `supabase` directly.
 
 `think()` accepts an optional `user_id`. When `user_id` is present and Supabase is available, the two-tier path is used: `db.load_recent(user_id, n=12)` + `db.retrieve_relevant(user_id, query, k=5)` → injected as a "Relevant past context" block in the system prompt. Falls back to local JSON otherwise. See `brain.py` for the full implementation.
 
-### 6.3 `commands.py` changes (shipped)
+### 6.3 `commands/notes.py` changes (shipped)
 
-All notes functions now accept `user_id` and call `_use_db(user_id)` to decide path. Additions beyond the original plan: `delete_last_note(user_id)` and `delete_notes(category, user_id)` — both db-aware. See `commands.py` for the full implementation.
+All notes functions now accept `user_id` and call `_use_db(user_id)` to decide path. Additions beyond the original plan: `delete_last_note(user_id)` and `delete_notes(category, user_id)` — both db-aware. See `commands/notes.py` for the full implementation.
 
 ---
 
@@ -246,7 +246,7 @@ All notes functions now accept `user_id` and call `_use_db(user_id)` to decide p
 | 8.4 | Write `db.py` | ✅ | new file |
 | 8.5 | Add login UI to `gui.py`; store session in `~/.jarvis/session.json` | ✅ | `gui.py` |
 | 8.6 | Refactor `brain.py` to use two-tier memory | ✅ | `brain.py` |
-| 8.7 | Refactor `commands.py` notes functions to use `db.py` | ✅ | `commands.py` |
+| 8.7 | Refactor `commands/notes.py` notes functions to use `db.py` | ✅ | `commands/notes.py` |
 | 8.8 | Thread `user_id` through `main.py` intent router | ✅ | `main.py` |
 | 8.9 | Write migration script for existing `notes.txt` | ✅ | `run_once_migrate_notes.py` (new) |
 | 8.10 | `conversation_history.json` and `notes.txt` kept as local fallback | ✅ (kept) | gitignored; both paths coexist |

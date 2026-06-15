@@ -78,7 +78,7 @@ Replace the current fuzzy-STT polling loop with `openWakeWord` — a local neura
 - **Input**: raw mic audio stream
 - **Output**: wake event (probability > threshold)
 - **Config**: `WAKE_MODEL` env var for custom `.onnx` model path; built-in HADES model as default
-- **Files**: `voice.py`, `requirements.txt`, `config.py`, `.env.example`
+- **Files**: `voice/wake.py`, `requirements.txt`, `config.py`, `.env.example`
 
 ### Phase 15 — Continuous Conversation
 After HADES speaks, keep the mic open for a configurable window (default 15s) instead of returning to standby. User can ask follow-ups without re-saying "HADES". Silence timeout or sleep-word exits the window. Depends on Phase 14 for reliable detection.
@@ -90,8 +90,8 @@ After HADES speaks, keep the mic open for a configurable window (default 15s) in
 ### Phase 16 — Action Confirmation Gate
 Destructive/irreversible actions (shutdown, restart, delete-all-notes, future: send email, delete calendar event) require explicit spoken or clicked confirmation. HADES asks "Are you sure, Sir?" — "yes/confirm" proceeds; anything else cancels. Timeout auto-cancels. Required before shipping any write/send features in v1.5.
 
-- **Pattern**: reuses `_pending_state` multi-turn machine already in `main.py`
-- **Files**: `main.py`, `commands.py`
+- **Pattern**: reuses `_pending_state` multi-turn machine already in `router.py`
+- **Files**: `router.py`, `commands/system.py`
 
 ---
 
