@@ -215,9 +215,7 @@ class _ScreenHandler(_Handler):
         return any(w in lower for w in SCREEN_WORDS)
     def handle(self, text, lower, gui, user_id):
         from vision import analyze_screen
-        return analyze_screen(
-            f"Describe what you see in the attached screenshot and help the user with their request: '{text}'."
-        )
+        return analyze_screen(text)
 
 
 class _HelpHandler(_Handler):

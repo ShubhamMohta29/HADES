@@ -26,7 +26,7 @@ def hades_loop(gui, user_id: str = None):
     if FACE_AUTH_ENABLED:
         gui.add_system_message("Face verification required...")
         from face_auth import verify_face
-        if verify_face():
+        if verify_face(user_id=user_id):
             gui.add_system_message("Identity confirmed. Welcome, Sir.")
             speak("Identity confirmed. Welcome back, Sir.")
         else:

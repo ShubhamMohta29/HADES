@@ -59,3 +59,16 @@ language sql stable as $$
   order by embedding <=> query_embedding
   limit match_count;
 $$;
+
+-- 6. Face encodings table
+--    encodings is a JSON array of 128-element float arrays (one per captured frame)
+create table if not exists face_encodings (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid references auth.users on delete cascade not null unique,
+  encodings   jsonb not null,
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now()
+);
+alter table face_encodings enable row level security;
+create policy "Users manage their own face encodings"
+  on face_encodings for all using (auth.uid() = user_id);

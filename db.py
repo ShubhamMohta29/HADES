@@ -6,12 +6,14 @@ function raises RuntimeError — callers should guard with `db.is_available()`.
 """
 
 import logging
+import threading
 from config import SUPABASE_URL, SUPABASE_ANON_KEY
 
 log = logging.getLogger("hades.db")
 
 _client = None
 _embedder = None
+_embedder_lock = threading.Lock()
 
 
 def is_available() -> bool:
@@ -31,8 +33,10 @@ def get_client():
 def _get_embedder():
     global _embedder
     if _embedder is None:
-        from sentence_transformers import SentenceTransformer
-        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        with _embedder_lock:
+            if _embedder is None:
+                from sentence_transformers import SentenceTransformer
+                _embedder = SentenceTransformer("all-MiniLM-L6-v2")
     return _embedder
 
 
@@ -180,3 +184,28 @@ def retrieve_relevant(user_id: str, query: str, k: int = 5) -> list:
 
 def clear_memory_db(user_id: str):
     get_client().table("conversation_memory").delete().eq("user_id", user_id).execute()
+
+
+# ── Face encodings ────────────────────────────────────────────────────────────
+
+def save_face_encodings(user_id: str, encodings: list) -> None:
+    """Upsert face encodings (list of 128-float lists) for a user."""
+    get_client().table("face_encodings").upsert({
+        "user_id": user_id,
+        "encodings": encodings,
+        "updated_at": "now()",
+    }).execute()
+
+
+def load_face_encodings(user_id: str) -> list | None:
+    """Return the stored encoding arrays for a user, or None if not found."""
+    result = (
+        get_client()
+        .table("face_encodings")
+        .select("encodings")
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if result.data:
+        return result.data[0]["encodings"]
+    return None
