@@ -61,7 +61,7 @@ HADES is the only local-first, open-source AI assistant that combines a real con
 - **Sleep mode** — Mic stays on but only wake word is processed; orb dims; distinct "I'm back, Sir" greeting on wake from sleep
 - **Follow-up window** — After HADES replies, orb enters `followup` state (dimmed cyan) for up to `FOLLOWUP_TIMEOUT` seconds; user can ask follow-ups without re-saying the wake word; silence timeout returns to standby
 - **Help command** — "help" / "commands" renders a styled command reference card in the chat log
-- **Face authentication** — Optional face-recognition gate before voice loop; register with `python face_auth.py --register`
+- **Face authentication** — Optional face-recognition gate before voice loop; auto-registers on first run when no encodings are found (no manual `--register` step required); face encodings synced to Supabase `face_encodings` table (primary) and cached in `face_encodings.pkl` (local fallback); works cross-device when signed in
 
 ### Distribution & Setup
 - **One-command installer** — `install.bat` creates venv, installs deps, downloads Piper binary and voice model, copies `.env.example`

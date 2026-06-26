@@ -59,6 +59,19 @@ Run once in the Supabase SQL editor after creating your project.
 ### 3.2 Tables
 
 ```sql
+-- Face encodings: stores face recognition data per user
+CREATE TABLE face_encodings (
+  id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id     UUID        REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  encodings   JSONB       NOT NULL,   -- array of 128-element float arrays (one per captured frame)
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE face_encodings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "own face encodings only" ON face_encodings
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
 -- Notes: replaces notes.txt
 CREATE TABLE notes (
   id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -207,7 +220,9 @@ Centralises all Supabase interaction. No other file imports `supabase` directly.
 - Auth helpers: `sign_in`, `sign_up`, `sign_in_magic_link`, `restore_session`, `sign_out`
 - Notes: `get_note_categories`, `delete_last_note_db`, `delete_notes_db` (additions)
 - Memory: `load_recent`, `clear_memory_db` (additions)
+- Face encodings: `save_face_encodings(user_id, encodings)` — upserts list of float arrays as JSONB; `load_face_encodings(user_id)` — returns stored arrays or `None`
 - Lazy init for both client and embedder (avoids import-time cost)
+- `_get_embedder()` uses a double-checked lock (`_embedder_lock`) — prevents multiple threads from each loading the 90 MB model concurrently on first call
 - `sign_in` / `sign_up` use `model_dump(mode='json')` — ensures the session dict written to `~/.jarvis/session.json` contains only JSON-native types (datetimes serialized as ISO strings, not Python `datetime` objects)
 
 ### 6.2 `brain.py` changes (shipped)

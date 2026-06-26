@@ -47,7 +47,7 @@ Append-only plain text file. One note per line.
 ---
 
 ### `face_encodings.pkl`
-Binary pickle of face embedding arrays captured during `python face_auth.py --register`. Read at startup when `FACE_AUTH_ENABLED=true`. Gitignored (biometric data).
+Local cache of face embedding arrays. Written by `face_auth.register_face()` after a successful capture session. When Supabase is configured and a `user_id` is available, the Supabase `face_encodings` table is the primary store; this file is the offline fallback. Gitignored (biometric data).
 
 ---
 
@@ -88,6 +88,20 @@ RLS policy: users can only read/write their own rows (`auth.uid() = user_id`).
 
 ---
 
+### `face_encodings` table
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid PK | `gen_random_uuid()` |
+| `user_id` | uuid FK → `auth.users` | ON DELETE CASCADE; UNIQUE per user |
+| `encodings` | jsonb | Array of 128-element float arrays (one per captured frame) |
+| `created_at` | timestamptz | Default `now()` |
+| `updated_at` | timestamptz | Refreshed on every re-registration |
+
+Written by `db.save_face_encodings(user_id, encodings)` after a registration session. Read by `db.load_face_encodings(user_id)` at the start of `verify_face()`. RLS policy: users can only read/write their own row.
+
+---
+
 ### `conversation_memory` table
 
 | Column | Type | Notes |
@@ -123,7 +137,7 @@ Called by `db.retrieve_relevant()`. Returns up to `match_count` rows whose cosin
 | Module | Owns | Side effects |
 |---|---|---|
 | `brain.py` | `conversation_history` list + `conversation_history.json` (local mode); `conversation_memory` rows via `db` (Supabase mode) | Writes JSON or Supabase rows on every reply |
-| `db.py` | Supabase client, embedder, all DB operations | Network calls to Supabase; loads SentenceTransformer on first embed |
+| `db.py` | Supabase client, embedder, all DB operations | Network calls to Supabase; loads SentenceTransformer on first embed (thread-safe via double-checked lock); exposes `save_face_encodings` / `load_face_encodings` |
 | `commands/notes.py` | `notes.txt` (local) or `notes` table via `db` (Supabase) | Appends/rewrites notes file |
 | `commands/system.py` | 12 `_CommandHandler` subclasses + `handle_command()` dispatcher; OS shell calls, volume, apps | Fires system commands; spawns reminder threads |
 | `commands/help.py` | `HELP_HTML` constant | None |
@@ -135,7 +149,7 @@ Called by `db.retrieve_relevant()`. Returns up to `match_count` rows whose cosin
 | `services/news.py` | None | HTTP GET to NewsAPI |
 | `services/stocks.py` | None | HTTP GET to yfinance / CoinGecko |
 | `services/spotify.py` | Spotify OAuth `.cache` | Controls Spotify client |
-| `face_auth.py` | `face_encodings.pkl` | Accesses camera |
+| `face_auth.py` | `face_encodings.pkl` (local cache); `face_encodings` Supabase table via `db` (primary when user logged in) | Accesses camera; calls `db.save_face_encodings` / `db.load_face_encodings` |
 | `gui.py` | pywebview window, `~/.jarvis/session.json` | Calls JS via evaluate_js; reads/writes session file |
 | `config.py` | `.env` values | None (read-only) |
 | `router.py` | 11 `_Handler` subclasses + `route()` dispatcher (Strategy pattern); `_pending_state` note flow | Orchestrates handler modules |

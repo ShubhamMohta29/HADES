@@ -36,6 +36,7 @@
 - **sentence-transformers** — `all-MiniLM-L6-v2`, 384-dimensional output
 - Runs locally (CPU); ~5–20 ms per sentence; ~90 MB model download on first use
 - Used by `db.embed()` to embed every conversation message for pgvector storage and semantic search
+- `_get_embedder()` uses a double-checked lock (`_embedder_lock`) so concurrent threads share a single model instance rather than each triggering a parallel download
 
 ## Third-Party APIs
 
@@ -87,7 +88,7 @@ HADES/
 ├── brain.py                   # Groq LLM, two-tier memory (Supabase / local JSON)
 ├── db.py                      # Supabase client, embeddings, auth, notes, memory
 ├── vision.py                  # screen capture + Groq Llama 4 Scout multimodal
-├── face_auth.py               # optional face verification (register + verify)
+├── face_auth.py               # optional face verification (auto-register on first run + verify); Supabase sync via db.save/load_face_encodings; user_id threaded in from main.py
 ├── gui.py                     # pywebview window + JS bridge + auth flow
 ├── config.py                  # .env loader, all constants
 │
@@ -114,7 +115,7 @@ HADES/
 ├── voice/
 │   └── vad.py                 # (Phase 20 — planned) VoiceActivityDetector; RMS energy per 20 ms frame; interrupt event
 ├── scripts/
-│   ├── supabase_schema.sql    # SQL: notes + conversation_memory + action_log tables, match_memory RPC
+│   ├── supabase_schema.sql    # SQL: notes + conversation_memory + face_encodings + action_log tables, match_memory RPC
 │   ├── run_once_migrate_notes.py  # one-time notes.txt → Supabase migration
 │   └── smoke_test.py          # pre-flight API key validation
 ├── install.bat                # Windows one-command installer
@@ -127,7 +128,7 @@ HADES/
 │   └── test_route.py          # 33 unit tests for router.route() (pytest, all deps mocked) — includes Phase 16 confirm gate tests
 ├── conversation_history.json  # local memory fallback (auto-generated, gitignored)
 ├── notes.txt                  # local notes fallback (gitignored)
-├── face_encodings.pkl         # face auth biometric data (gitignored)
+├── face_encodings.pkl         # face auth biometric data — local cache; Supabase face_encodings table is primary (gitignored)
 ├── requirements.txt
 ├── .env                       # secrets (not committed)
 └── docs/                      # planning documents
@@ -168,4 +169,4 @@ VAD_THRESHOLD           # RMS energy threshold for voice-activity detection (def
 - **Microphone optional** — `MIC_ERROR` sentinel from `listen()` enables per-call detection; after 3 consecutive failures the GUI shows a text-only warning; reconnect is auto-detected
 - **Supabase optional** — all Supabase-dependent features (cloud memory, multi-user, semantic search) degrade gracefully to flat-file fallback when `SUPABASE_URL` is not set
 - Must stay on free tiers for all APIs
-- Face auth (`face_recognition`) requires C++ Build Tools (dlib dependency); opt-in only via `FACE_AUTH_ENABLED=true`
+- Face auth (`face_recognition`) requires C++ Build Tools (dlib dependency); opt-in only via `FACE_AUTH_ENABLED=true`; auto-registers on first run; encodings synced to Supabase `face_encodings` table when a `user_id` is available

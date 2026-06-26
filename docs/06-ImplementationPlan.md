@@ -126,13 +126,16 @@
 ---
 
 ## Phase 10: Face Auth (Optional) ✅
-**Goal**: Optional face gate before activating voice loop.
+**Goal**: Optional face gate before activating voice loop; Supabase-synced encodings; auto-registration on first run.
 
-- [x] `face_auth.py:verify_face()` — capture frame, compare against `known_faces/`
+- [x] `face_auth.py:verify_face(user_id)` — load encodings (Supabase first, local `.pkl` fallback); if none found, auto-register; capture frames and compare against stored encodings
+- [x] `face_auth.py:register_face(user_id)` — capture 30 webcam frames; save encodings to `face_encodings.pkl` and Supabase `face_encodings` table
 - [x] `FACE_AUTH_ENABLED` flag in `.env` / `config.py`
-- [x] Gate wired into `hades_loop()` before `wait_for_wake_word()`
+- [x] Gate wired into `hades_loop()` before `wait_for_wake_word()`; `user_id` passed from `main.py`
+- [x] `db.save_face_encodings(user_id, encodings)` / `db.load_face_encodings(user_id)` — upsert/read from `face_encodings` Supabase table
+- [x] `face_encodings` table added to `scripts/supabase_schema.sql` with RLS
 
-**Done when**: With `FACE_AUTH_ENABLED=true`, unrecognized face is denied; known face passes through.
+**Done when**: With `FACE_AUTH_ENABLED=true`, first run auto-registers; subsequent runs verify without manual setup; encodings sync to Supabase so cross-device re-registration is not needed; unrecognized face is denied.
 
 ---
 

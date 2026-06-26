@@ -101,7 +101,7 @@ If `FACE_AUTH_ENABLED=true`: face verification runs first inside `hades_loop()`.
 3. Orb → THINKING; `vision.analyze_screen()` called
 4. `PIL.ImageGrab.grab()` captures full screen
 5. Image resized to 1280px wide, converted to base64 JPEG
-6. Sent to Groq Llama 4 Scout with HADES persona system prompt + user's prompt
+6. Sent to Groq Llama 4 Scout with HADES persona system prompt; user's raw text is passed as the prompt (the system prompt already instructs the model to describe the screen — no double-instruction)
 7. Response spoken + displayed in chat
 8. Orb → STANDBY
 
