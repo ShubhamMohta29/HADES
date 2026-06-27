@@ -1,27 +1,29 @@
-groq
-speechrecognition
-pyaudio
-requests
-psutil
-pyautogui
-pyperclip
-pycaw; platform_system == "Windows"
-comtypes; platform_system == "Windows"
-python-dotenv
-spotipy
-opencv-python
-Pillow
-pywebview
+groq==1.1.0
+speechrecognition==3.14.5
+pyaudio==0.2.14
+requests==2.34.2
+psutil==5.9.8
+pyautogui==0.9.54
+pyperclip==1.11.0
+pycaw==20251023; platform_system == "Windows"
+comtypes==1.4.15; platform_system == "Windows"
+python-dotenv==1.1.1
+spotipy==2.26.0
+opencv-python==4.11.0.86
+Pillow==10.3.0
+pywebview==6.2.1
 # piper-tts is NOT listed here — install.bat downloads the prebuilt Windows CLI binary
 # instead of the Python package, which requires Visual C++ to compile.
-sounddevice
+sounddevice==0.5.5
+soundfile==0.13.1
 # face_recognition requires dlib which needs Visual C++ Build Tools.
 # Leave FACE_AUTH_ENABLED=false in .env (default) to skip it entirely.
-# To enable face auth: install C++ Build Tools, then: pip install face_recognition
-numpy
-soundfile
+# To enable face auth: install C++ Build Tools, then: pip install face_recognition==1.3.0
+numpy==2.1.1
 # Supabase + semantic memory (optional — only needed if SUPABASE_URL is set)
-supabase
-sentence-transformers
+supabase==2.22.2
+sentence-transformers==5.6.0
 # Neural wake word (Phase 14) — optional; falls back to STT if not installed
+# Version intentionally unpinned: package is optional and must be installed
+# separately when the neural wake word feature is desired.
 openwakeword

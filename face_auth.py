@@ -7,10 +7,10 @@ Encodings are stored in Supabase (primary) and face_encodings.pkl (local cache).
 Registration happens automatically on first run when no encodings are found.
 """
 import os
-import pickle
+import json
 import logging
 
-ENCODINGS_FILE = os.path.join(os.path.dirname(__file__), "face_encodings.pkl")
+ENCODINGS_FILE = os.path.join(os.path.dirname(__file__), "face_encodings.json")
 log = logging.getLogger("hades.face_auth")
 
 try:
@@ -34,15 +34,16 @@ def _load_encodings(user_id=None):
         except Exception as e:
             log.warning("Could not load face encodings from Supabase: %s", e)
     if os.path.exists(ENCODINGS_FILE):
-        with open(ENCODINGS_FILE, "rb") as f:
-            return pickle.load(f)
+        with open(ENCODINGS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return [np.array(e) for e in data]
     return None
 
 
 def _save_encodings(encodings, user_id=None):
     """Persist encodings to local file and Supabase."""
-    with open(ENCODINGS_FILE, "wb") as f:
-        pickle.dump(encodings, f)
+    with open(ENCODINGS_FILE, "w", encoding="utf-8") as f:
+        json.dump([e.tolist() for e in encodings], f)
     if user_id:
         try:
             import db

@@ -29,6 +29,7 @@ conversation_history.json
 
 # Face recognition biometric data
 face_encodings.pkl
+face_encodings.json
  
 # Spotify auth cache
 .cache

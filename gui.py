@@ -83,7 +83,7 @@ class HadesAPI:
         except Exception as e:
             log.warning("Login failed: %s", e)
             if self._window:
-                self._window.evaluate_js(f"window.showLoginError({json.dumps(str(e))})")
+                self._window.evaluate_js(f"window.showLoginError({json.dumps('Authentication failed. Please check your credentials and try again.')})")
         return {"ok": True}
 
     def register(self, email: str, password: str):
@@ -107,7 +107,7 @@ class HadesAPI:
         except Exception as e:
             log.warning("Registration failed: %s", e)
             if self._window:
-                self._window.evaluate_js(f"window.showSignupError({json.dumps(str(e))})")
+                self._window.evaluate_js(f"window.showSignupError({json.dumps('Registration failed. Please try again or use a different email.')})")
         return {"ok": True}
 
     def magic_link(self, email: str):
@@ -120,7 +120,7 @@ class HadesAPI:
         except Exception as e:
             log.warning("Magic link failed: %s", e)
             if self._window:
-                self._window.evaluate_js(f"window.showLoginError({json.dumps(str(e))})")
+                self._window.evaluate_js(f"window.showLoginError({json.dumps('Could not send magic link. Please check your email and try again.')})")
         return {"ok": True}
 
     def skip_login(self):

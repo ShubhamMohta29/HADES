@@ -74,7 +74,7 @@ def analyze_screen(prompt: str = "What do you see on this screen? Help me with w
         log.error("Groq vision error: %s", e)
         if "rate_limit" in str(e).lower():
             return "I've hit my vision rate limit, Sir. Try again in a moment."
-        return f"Vision system error, Sir: {str(e)[:120]}"
+        return "Vision system encountered an error, Sir. Please try again."
     except Exception as e:
         log.exception("Vision error: %s", e)
-        return f"Vision system error, Sir: {str(e)[:120]}"
+        return "Vision system encountered an error, Sir. Please try again."
